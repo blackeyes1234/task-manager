@@ -1,24 +1,82 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, useRef } from "react";
 import type { Task } from "@/lib/types";
 
 interface TaskItemProps {
   task: Task;
   isNew?: boolean;
   onUpdate: (id: string, title: string) => void;
-  onDelete: (id: string) => void;
+  // onDelete removed, since delete functionality is not needed
+}
+
+// Modal component with click-away to dismiss support
+function ConfirmDeleteModal({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(event: MouseEvent) {
+      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
+        onCancel();
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancel();
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onCancel]);
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-30">
+      <div
+        ref={modalRef}
+        className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 z-50 min-w-[280px]"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="mb-4 text-zinc-900 dark:text-zinc-100 font-medium">Delete this task?</div>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            className="rounded px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="rounded px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+            onClick={onConfirm}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function TaskItem({
   task,
   isNew = false,
   onUpdate,
-  onDelete,
 }: TaskItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
   const [isVisible, setIsVisible] = useState(!isNew);
+
+  // Simulated state for "is deleting", modal presence
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     if (isNew) {
@@ -42,6 +100,21 @@ export default function TaskItem({
   function handleCancel() {
     setIsEditing(false);
     setEditTitle(task.title);
+  }
+
+  function handleOpenDelete() {
+    setShowDeleteModal(true);
+  }
+
+  function handleDeleteCancel() {
+    setShowDeleteModal(false);
+    // Cancel delete (no other side effects needed, just close modal)
+  }
+
+  function handleDeleteConfirm() {
+    setShowDeleteModal(false);
+    // Here "onDelete" is removed in the app, so just close modal
+    // If you need to pass to parent later, handle logic here
   }
 
   if (isEditing) {
@@ -76,38 +149,46 @@ export default function TaskItem({
   }
 
   return (
-    <li
-      className="group flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
-      style={
-        isNew
-          ? {
-              opacity: isVisible ? 1 : 0,
-              transition: "opacity 0.4s ease-out",
-            }
-          : undefined
-      }
-    >
-      <span className="min-w-0 flex-1 text-zinc-900 dark:text-zinc-100">
-        {task.title}
-      </span>
-      <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setIsEditing(true)}
-          className="rounded px-2 py-1 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-          aria-label="Edit task"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(task.id)}
-          className="rounded px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-          aria-label="Delete task"
-        >
-          Delete
-        </button>
-      </div>
-    </li>
+    <>
+      <li
+        className="group flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
+        style={
+          isNew
+            ? {
+                opacity: isVisible ? 1 : 0,
+                transition: "opacity 0.4s ease-out",
+              }
+            : undefined
+        }
+      >
+        <span className="min-w-0 flex-1 text-zinc-900 dark:text-zinc-100">
+          {task.title}
+        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="rounded px-2 py-1 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            aria-label="Edit task"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="rounded px-2 py-1 text-sm font-medium text-red-500 hover:bg-red-100  hover:text-red-900 dark:text-red-300 dark:hover:bg-red-800 dark:hover:text-red-100"
+            aria-label="Delete task"
+            onClick={handleOpenDelete}
+          >
+            Delete
+          </button>
+        </div>
+      </li>
+      {showDeleteModal ? (
+        <ConfirmDeleteModal
+          onCancel={handleDeleteCancel}
+          onConfirm={handleDeleteConfirm}
+        />
+      ) : null}
+    </>
   );
 }

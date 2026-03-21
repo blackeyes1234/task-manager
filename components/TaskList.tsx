@@ -6,12 +6,14 @@ import { useState, useRef, useEffect } from "react";
 interface TaskListProps {
   tasks: Task[];
   recentlyAddedId?: string | null;
+  onUpdate: (id: string, title: string) => void;
   onDelete: (id: string) => void;
 }
 
 export default function TaskList({
   tasks: initialTasks,
   recentlyAddedId = null,
+  onUpdate,
   onDelete,
 }: TaskListProps) {
   const [taskOrder, setTaskOrder] = useState<string[]>(initialTasks.map(t => t.id));
@@ -26,9 +28,16 @@ export default function TaskList({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<"above" | "below" | null>(null);
 
+  // For delete confirmation
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
+
+  // Ref for the modal dialog element
+  const deleteModalRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setTaskOrder(currentOrder => {
-      // Filter out deleted ids, add new ids
+      // Filter out ids not in the latest tasks, add new ids
       const taskIds = initialTasks.map(t => t.id);
       let newOrder = currentOrder.filter(id => taskIds.includes(id));
       for (const id of taskIds) {
@@ -52,6 +61,27 @@ export default function TaskList({
       inputRef.current.select();
     }
   }, [editingTaskId]);
+
+  // Close the delete modal when click away from the modal popup
+  useEffect(() => {
+    if (!showDeleteDialog) return;
+
+    function handleClickAway(event: MouseEvent) {
+      // if click is outside the modal dialog content, trigger cancel
+      if (
+        deleteModalRef.current &&
+        !deleteModalRef.current.contains(event.target as Node)
+      ) {
+        cancelDelete();
+      }
+    }
+
+    // Use mousedown to ensure it fires before focus events
+    document.addEventListener("mousedown", handleClickAway);
+    return () => {
+      document.removeEventListener("mousedown", handleClickAway);
+    };
+  }, [showDeleteDialog]);
 
   const handleToggleComplete = (taskId: string) => {
     setCompletedTasks((prev) => ({
@@ -77,12 +107,32 @@ export default function TaskList({
       ...prev,
       [taskId]: trimmed,
     }));
+    onUpdate(taskId, trimmed);
     setEditingTaskId(null);
   };
 
   const handleCancel = () => {
     setEditingTaskId(null);
     setEditTitle("");
+  };
+
+  // Replacement for window.confirm dialog
+  const handleDelete = (taskId: string) => {
+    setPendingDeleteId(taskId);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = () => {
+    if (pendingDeleteId) {
+      onDelete(pendingDeleteId);
+    }
+    setPendingDeleteId(null);
+    setShowDeleteDialog(false);
+  };
+
+  const cancelDelete = () => {
+    setPendingDeleteId(null);
+    setShowDeleteDialog(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, taskId: string) => {
@@ -202,6 +252,15 @@ export default function TaskList({
             opacity: 0.6;
             background: #ddd !important;
           }
+          .modal-bg {
+            background: rgba(0,0,0,0.2);
+            position: fixed;
+            z-index: 50;
+            left:0;top:0;right:0;bottom:0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
         `}
       </style>
       <ul className="flex flex-col gap-2">
@@ -310,21 +369,47 @@ export default function TaskList({
                   </span>
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => onDelete(task.id)}
-                  className="rounded px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                  aria-label="Delete task"
-                  tabIndex={isEditing ? -1 : 0}
-                >
-                  Delete
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleDelete(task.id)}
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 dark:bg-red-600 dark:hover:bg-red-700"
+                aria-label="Delete task"
+              >
+                Delete
+              </button>
             </li>
           );
         })}
       </ul>
+      {/* Simple Modal for Delete Confirmation */}
+      {showDeleteDialog && (
+        <div className="modal-bg">
+          <div
+            ref={deleteModalRef}
+            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-md p-6 z-50 flex flex-col gap-4 min-w-[280px]"
+            tabIndex={-1}
+          >
+            <div className="text-zinc-900 dark:text-zinc-100 font-medium">
+              Are you sure you want to delete this task?
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={cancelDelete}
+                className="rounded bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 dark:bg-red-600 dark:hover:bg-red-700"
+                autoFocus
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
