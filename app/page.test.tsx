@@ -55,7 +55,9 @@ describe("Home task manager", () => {
     await user.click(screen.getByRole("button", { name: "Add task" }));
     expect(screen.getByText("Read docs")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Delete task" }));
+    await user.click(
+      screen.getByRole("button", { name: /Delete task/ })
+    );
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(

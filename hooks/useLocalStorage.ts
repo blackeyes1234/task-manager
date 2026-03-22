@@ -8,6 +8,8 @@ import {
   type SetStateAction,
 } from "react";
 
+export type LocalStorageReadFallbackReason = "storage_error" | "invalid_data";
+
 export interface UseLocalStorageOptions<T> {
   /** Convert stored string to value; return `null` if invalid or corrupt. */
   deserialize?: (raw: string) => T | null;
@@ -15,6 +17,11 @@ export interface UseLocalStorageOptions<T> {
   serialize?: (value: T) => string;
   /** Called when persisting to `localStorage` fails (quota, private mode, etc.). */
   onWriteError?: () => void;
+  /**
+   * Called when stored data cannot be used: `localStorage` access threw, or
+   * `deserialize` returned `null` for non-empty stored data (corrupt / wrong shape).
+   */
+  onReadFallback?: (reason: LocalStorageReadFallbackReason) => void;
 }
 
 function defaultSerialize<T>(value: T): string {
@@ -54,6 +61,8 @@ export function useLocalStorage<T>(
 
   // Load when `key` changes (client-only; effect does not run on server)
   useEffect(() => {
+    let readFallbackReason: LocalStorageReadFallbackReason | null = null;
+
     try {
       const raw = localStorage.getItem(key);
       const deserialize =
@@ -64,10 +73,20 @@ export function useLocalStorage<T>(
         setValue(fallback);
       } else {
         const parsed = deserialize(raw);
-        setValue(parsed !== null ? parsed : fallback);
+        if (parsed !== null) {
+          setValue(parsed);
+        } else {
+          readFallbackReason = "invalid_data";
+          setValue(fallback);
+        }
       }
     } catch {
+      readFallbackReason = "storage_error";
       setValue(initialRef.current);
+    }
+
+    if (readFallbackReason !== null) {
+      optionsRef.current.onReadFallback?.(readFallbackReason);
     }
 
     setHasRead(true);
