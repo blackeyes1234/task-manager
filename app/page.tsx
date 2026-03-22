@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   type Task,
   type TaskPriority,
@@ -9,9 +9,13 @@ import {
 } from "@/lib/types";
 import { generateId } from "@/lib/utils";
 import { taskMatchesSearchQuery } from "@/lib/taskSearch";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 import TaskForm from "@/components/TaskForm";
 import TaskList from "@/components/TaskList";
+import TaskSearchField from "@/components/TaskSearchField";
+import ThemeToggle from "@/components/ThemeToggle";
+import Toaster from "@/components/Toaster";
+import { useToasts } from "@/hooks/useToasts";
 
 const STORAGE_KEY = "task-manager-tasks";
 
@@ -38,15 +42,43 @@ function normalizeStoredTasks(raw: unknown[]): Task[] {
     .filter((t) => t.id.length > 0);
 }
 
-const SEARCH_DEBOUNCE_MS = 200;
+const EMPTY_TASKS: Task[] = [];
+
+type PersistAction = "add" | "edit" | "delete";
+
+function deserializeTasksFromStorage(raw: string): Task[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return normalizeStoredTasks(parsed);
+  } catch {
+    return null;
+  }
+}
 
 export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const lastPersistActionRef = useRef<PersistAction | null>(null);
+  const { toasts, pushToast, dismissToast } = useToasts();
+
+  const [tasks, setTasks] = useLocalStorage<Task[]>(STORAGE_KEY, EMPTY_TASKS, {
+    deserialize: deserializeTasksFromStorage,
+    onWriteError: () => {
+      const action = lastPersistActionRef.current;
+      lastPersistActionRef.current = null;
+      if (action === "add") {
+        pushToast("error", "Failed to add task. Please try again.");
+      } else if (action === "edit") {
+        pushToast("error", "Failed to update task. Please try again.");
+      } else if (action === "delete") {
+        pushToast("error", "Failed to delete task. Please try again.");
+      } else {
+        pushToast("error", "Failed to save tasks. Please try again.");
+      }
+    },
+  });
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("All");
-  const [searchText, setSearchText] = useState("");
-  const debouncedSearch = useDebouncedValue(searchText, SEARCH_DEBOUNCE_MS);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
 
   const filteredTasks = useMemo(() => {
     switch (taskFilter) {
@@ -71,26 +103,9 @@ export default function Home() {
     searchFilteredTasks.length === 0 &&
     filteredTasks.length > 0;
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as unknown[];
-        if (Array.isArray(parsed)) setTasks(normalizeStoredTasks(parsed));
-      }
-    } catch {
-      // ignore invalid stored data
-    }
-    setHasLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hasLoaded) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks, hasLoaded]);
-
   const addTask = useCallback(
     (title: string, priority: TaskPriority, dueDate: string | null) => {
+      lastPersistActionRef.current = "add";
       const id = generateId();
       setTasks((prev) => [
         ...prev,
@@ -103,18 +118,24 @@ export default function Home() {
         },
       ]);
       setRecentlyAddedId(id);
-      setTimeout(() => setRecentlyAddedId(null), 500);
+      setTimeout(() => setRecentlyAddedId(null), 450);
+      pushToast("success", "Task successfully added!");
     },
-    []
+    [setTasks, pushToast]
   );
 
-  const updateTask = useCallback((id: string, title: string) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id ? { ...task, title: title.trim() } : task
-      )
-    );
-  }, []);
+  const updateTask = useCallback(
+    (id: string, title: string) => {
+      lastPersistActionRef.current = "edit";
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === id ? { ...task, title: title.trim() } : task
+        )
+      );
+      pushToast("success", "Task updated successfully!");
+    },
+    [setTasks, pushToast]
+  );
 
   const toggleTaskComplete = useCallback((id: string) => {
     setTasks((prev) =>
@@ -122,24 +143,33 @@ export default function Home() {
         task.id === id ? { ...task, completed: !task.completed } : task
       )
     );
-  }, []);
+  }, [setTasks]);
 
-  const deleteTask = useCallback((id: string) => {
-    setTasks((prev) => prev.filter((task) => task.id !== id));
-  }, []);
+  const deleteTask = useCallback(
+    (id: string) => {
+      lastPersistActionRef.current = "delete";
+      setTasks((prev) => prev.filter((task) => task.id !== id));
+      pushToast("success", "Task has been deleted.");
+    },
+    [setTasks, pushToast]
+  );
 
   const filterOptions: TaskFilter[] = ["All", "Active", "Completed"];
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
+      <Toaster toasts={toasts} onDismiss={dismissToast} />
       <main className="w-full max-w-2xl space-y-8 px-4 py-12 sm:px-6">
-        <header>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Task Manager
-          </h1>
-          <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-            Add, edit, and remove tasks below.
-          </p>
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+              Task Manager
+            </h1>
+            <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+              Add, edit, and remove tasks below.
+            </p>
+          </div>
+          <ThemeToggle />
         </header>
 
         <TaskForm onSubmit={addTask} />
@@ -173,46 +203,7 @@ export default function Home() {
             })}
           </div>
 
-          <div className="mb-4 flex w-full flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-3">
-            <div className="relative min-w-0 flex-1">
-              <input
-                type="search"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Search tasks…"
-                aria-label="Search tasks"
-                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2.5 pr-10 text-zinc-900 placeholder-zinc-500 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-400 dark:focus:border-zinc-400 dark:focus:ring-zinc-700"
-                autoComplete="off"
-              />
-              <span
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
-                aria-hidden
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.3-4.3" />
-                </svg>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSearchText("")}
-              disabled={searchText.length === 0}
-              className="shrink-0 rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              Clear
-            </button>
-          </div>
+          <TaskSearchField onDebouncedChange={setDebouncedSearch} />
 
           <TaskList
             tasks={searchFilteredTasks}

@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, memo } from "react";
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -13,7 +13,7 @@ interface HighlightedTextProps {
 /**
  * Highlights case-insensitive matches of `query` inside `text` using <mark>.
  */
-export default function HighlightedText({
+function HighlightedText({
   text,
   query,
   className,
@@ -45,3 +45,5 @@ export default function HighlightedText({
     </>
   );
 }
+
+export default memo(HighlightedText);

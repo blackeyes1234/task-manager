@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent, useRef } from "react";
+import { memo, useState, useEffect, FormEvent, useRef } from "react";
 import type { Task, TaskPriority } from "@/lib/types";
 import { DueDateLabel } from "@/components/DueDateLabel";
 
@@ -11,13 +11,17 @@ const priorityBadgeClass: Record<TaskPriority, string> = {
   Low: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 ring-1 ring-inset ring-green-600/20 dark:bg-green-950/50 dark:text-green-200 dark:ring-green-500/30",
 };
 
-export function PriorityBadge({ priority }: { priority: TaskPriority }) {
+export const PriorityBadge = memo(function PriorityBadge({
+  priority,
+}: {
+  priority: TaskPriority;
+}) {
   return (
     <span className={priorityBadgeClass[priority]}>
       {priority}
     </span>
   );
-}
+});
 
 interface TaskItemProps {
   task: Task;
@@ -53,25 +57,34 @@ function ConfirmDeleteModal({
     };
   }, [onCancel]);
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-30">
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-30"
+      role="presentation"
+    >
       <div
         ref={modalRef}
-        className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 z-50 min-w-[280px]"
+        className="z-50 min-w-[280px] rounded-lg border border-zinc-200 bg-white p-6 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="task-item-delete-dialog-title"
       >
-        <div className="mb-4 text-zinc-900 dark:text-zinc-100 font-medium">Delete this task?</div>
+        <div
+          id="task-item-delete-dialog-title"
+          className="mb-4 font-medium text-zinc-900 dark:text-zinc-100"
+        >
+          Delete this task?
+        </div>
         <div className="flex justify-end gap-2">
           <button
             type="button"
-            className="rounded px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+            className="rounded px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
             onClick={onCancel}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="rounded px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+            className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
             onClick={onConfirm}
           >
             Delete
@@ -82,7 +95,7 @@ function ConfirmDeleteModal({
   );
 }
 
-export default function TaskItem({
+function TaskItem({
   task,
   isNew = false,
   onUpdate,
@@ -138,26 +151,27 @@ export default function TaskItem({
       <form
         onSubmit={handleSubmit}
         className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800/50"
+        aria-label="Edit task form"
       >
         <PriorityBadge priority={task.priority} />
         <input
           type="text"
           value={editTitle}
           onChange={(e) => setEditTitle(e.target.value)}
-          className="min-w-0 flex-1 rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-zinc-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+          className="min-w-0 flex-1 rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 outline-none focus-visible:border-zinc-500 focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus-visible:ring-zinc-600 dark:focus-visible:ring-offset-zinc-900"
           autoFocus
           aria-label="Edit task title"
         />
         <button
           type="submit"
-          className="rounded px-2 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 dark:text-zinc-200 dark:hover:bg-zinc-700"
+          className="rounded px-2 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
         >
           Save
         </button>
         <button
           type="button"
           onClick={handleCancel}
-          className="rounded px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+          className="rounded px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
         >
           Cancel
         </button>
@@ -189,14 +203,14 @@ export default function TaskItem({
           <button
             type="button"
             onClick={() => setIsEditing(true)}
-            className="rounded px-2 py-1 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-            aria-label="Edit task"
+            className="rounded px-2 py-1 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
+            aria-label={`Edit task "${task.title}"`}
           >
             Edit
           </button>
           <button
             type="button"
-            className="rounded px-2 py-1 text-sm font-medium text-red-500 hover:bg-red-100  hover:text-red-900 dark:text-red-300 dark:hover:bg-red-800 dark:hover:text-red-100"
+            className="rounded px-2 py-1 text-sm font-medium text-red-500 hover:bg-red-100 hover:text-red-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:text-red-300 dark:hover:bg-red-800 dark:hover:text-red-100 dark:focus-visible:ring-offset-zinc-900"
             aria-label="Delete task"
             onClick={handleOpenDelete}
           >
@@ -213,3 +227,5 @@ export default function TaskItem({
     </>
   );
 }
+
+export default memo(TaskItem);

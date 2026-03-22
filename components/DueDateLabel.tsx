@@ -1,9 +1,10 @@
 "use client";
 
+import { memo } from "react";
 import type { Task } from "@/lib/types";
 import { formatDueDateLabel, isDueDateOverdue } from "@/lib/formatDueDate";
 
-export function DueDateLabel({ task }: { task: Task }) {
+function DueDateLabelInner({ task }: { task: Task }) {
   const label = formatDueDateLabel(task.dueDate);
   if (!label) return null;
   const overdue = isDueDateOverdue(task.dueDate, task.completed);
@@ -19,3 +20,5 @@ export function DueDateLabel({ task }: { task: Task }) {
     </span>
   );
 }
+
+export const DueDateLabel = memo(DueDateLabelInner);

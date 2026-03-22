@@ -4,7 +4,7 @@ import type { Task } from "@/lib/types";
 import { DueDateLabel } from "@/components/DueDateLabel";
 import HighlightedText from "@/components/HighlightedText";
 import { PriorityBadge } from "@/components/TaskItem";
-import { useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect, useCallback } from "react";
 
 interface TaskListProps {
   tasks: Task[];
@@ -18,7 +18,7 @@ interface TaskListProps {
   onToggleComplete: (id: string) => void;
 }
 
-export default function TaskList({
+function TaskList({
   tasks: initialTasks,
   highlightQuery = "",
   noResultsFromSearch = false,
@@ -41,28 +41,42 @@ export default function TaskList({
   // For delete confirmation
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
+  /** Tasks mid slide-out; parent is not updated until animation ends. */
+  const [exitingTaskIds, setExitingTaskIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
   // Ref for the modal dialog element
   const deleteModalRef = useRef<HTMLDivElement>(null);
+  const exitTimersRef = useRef<Map<string, number>>(new Map());
+
+  const cancelDelete = useCallback(() => {
+    setPendingDeleteId(null);
+    setShowDeleteDialog(false);
+  }, []);
 
   useEffect(() => {
-    setTaskOrder(currentOrder => {
-      // Filter out ids not in the latest tasks, add new ids
-      const taskIds = initialTasks.map(t => t.id);
-      let newOrder = currentOrder.filter(id => taskIds.includes(id));
-      for (const id of taskIds) {
-        if (!newOrder.includes(id)) {
-          newOrder.push(id);
+    queueMicrotask(() => {
+      setTaskOrder((currentOrder) => {
+        const taskIds = initialTasks.map((t) => t.id);
+        const newOrder = currentOrder.filter((id) => taskIds.includes(id));
+        for (const id of taskIds) {
+          if (!newOrder.includes(id)) {
+            newOrder.push(id);
+          }
         }
-      }
-      return newOrder;
+        return newOrder;
+      });
+      setLocalTitles(
+        initialTasks.reduce(
+          (acc, task) => {
+            acc[task.id] = task.title;
+            return acc;
+          },
+          {} as { [id: string]: string }
+        )
+      );
     });
-    setLocalTitles(
-      initialTasks.reduce((acc, task) => {
-        acc[task.id] = task.title;
-        return acc;
-      }, {} as { [id: string]: string })
-    );
   }, [initialTasks]);
 
   useEffect(() => {
@@ -91,7 +105,15 @@ export default function TaskList({
     return () => {
       document.removeEventListener("mousedown", handleClickAway);
     };
-  }, [showDeleteDialog]);
+  }, [showDeleteDialog, cancelDelete]);
+
+  useEffect(() => {
+    const timers = exitTimersRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   const handleToggleComplete = (taskId: string) => {
     onToggleComplete(taskId);
@@ -130,16 +152,40 @@ export default function TaskList({
   };
 
   const confirmDelete = () => {
-    if (pendingDeleteId) {
-      onDelete(pendingDeleteId);
-    }
+    const id = pendingDeleteId;
     setPendingDeleteId(null);
     setShowDeleteDialog(false);
-  };
+    if (!id) return;
 
-  const cancelDelete = () => {
-    setPendingDeleteId(null);
-    setShowDeleteDialog(false);
+    const exitMs =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true
+        ? 0
+        : 320;
+
+    setExitingTaskIds((prev) => new Set(prev).add(id));
+
+    const prevTimer = exitTimersRef.current.get(id);
+    if (prevTimer) clearTimeout(prevTimer);
+
+    const runDelete = () => {
+      exitTimersRef.current.delete(id);
+      onDelete(id);
+      setExitingTaskIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    };
+
+    if (exitMs === 0) {
+      queueMicrotask(runDelete);
+    } else {
+      exitTimersRef.current.set(
+        id,
+        window.setTimeout(runDelete, exitMs)
+      );
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, taskId: string) => {
@@ -150,10 +196,6 @@ export default function TaskList({
       e.preventDefault();
       handleCancel();
     }
-  };
-
-  const handleInputBlur = (taskId: string) => {
-    handleCancel();
   };
 
   // Drag and Drop Handlers
@@ -185,7 +227,7 @@ export default function TaskList({
     setTaskOrder(prevOrder => {
       const updated = [...prevOrder];
       const fromIdx = updated.indexOf(draggedId);
-      let toIdx = updated.indexOf(droppedId);
+      const toIdx = updated.indexOf(droppedId);
 
       // Remove the dragged task
       updated.splice(fromIdx, 1);
@@ -271,9 +313,20 @@ export default function TaskList({
             outline: 2px dashed #2563eb !important;
             background: linear-gradient(to top, #dbeafe 80%, transparent 100%) !important;
           }
+          .dark .drag-over-above {
+            outline: 2px dashed #60a5fa !important;
+            background: linear-gradient(to bottom, rgba(30, 58, 138, 0.45) 80%, transparent 100%) !important;
+          }
+          .dark .drag-over-below {
+            outline: 2px dashed #60a5fa !important;
+            background: linear-gradient(to top, rgba(30, 58, 138, 0.45) 80%, transparent 100%) !important;
+          }
           .dragged {
             opacity: 0.6;
             background: #ddd !important;
+          }
+          .dark .dragged {
+            background: #3f3f46 !important;
           }
           .modal-bg {
             background: rgba(0,0,0,0.2);
@@ -284,10 +337,41 @@ export default function TaskList({
             align-items: center;
             justify-content: center;
           }
+          .dark .modal-bg {
+            background: rgba(0,0,0,0.55);
+          }
+          @keyframes task-item-enter {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          .task-item-enter {
+            animation: task-item-enter 0.4s ease-out forwards;
+          }
+          @keyframes task-item-leave {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(100%); }
+          }
+          .task-item-leaving {
+            animation: task-item-leave 0.32s ease-in forwards;
+            pointer-events: none;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .task-item-enter {
+              animation: none;
+            }
+            .task-item-leaving {
+              animation: none;
+              opacity: 0;
+              transform: translateX(0);
+            }
+          }
         `}
       </style>
-      <ul className="flex flex-col gap-2">
-        {taskOrder.map((taskId, idx) => {
+      <ul
+        className="flex flex-col gap-2 overflow-x-hidden"
+        aria-label="Task list"
+      >
+        {taskOrder.map((taskId) => {
           const task = findTask(taskId);
           if (!task) return null;
           const isCompleted = task.completed;
@@ -301,6 +385,8 @@ export default function TaskList({
               : isDragOver && dragOverPosition === "below"
               ? "drag-over-below"
               : "";
+          const isLeaving = exitingTaskIds.has(task.id);
+          const isEntering = recentlyAddedId != null && task.id === recentlyAddedId;
 
           return (
             <li
@@ -309,11 +395,13 @@ export default function TaskList({
                 "group flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 task-hover",
                 dragging && "dragged",
                 dragOverClass,
+                isEntering && "task-item-enter",
+                isLeaving && "task-item-leaving",
               ]
                 .filter(Boolean)
                 .join(" ")}
-              draggable={!isEditing}
-              onDragStart={e => !isEditing && onDragStart(task.id)}
+              draggable={!isEditing && !isLeaving}
+              onDragStart={() => !isEditing && onDragStart(task.id)}
               onDragOver={e => !isEditing && onDragOver(e, task.id)}
               onDrop={e => !isEditing && onDrop(e, task.id)}
               onDragEnd={onDragEnd}
@@ -325,8 +413,12 @@ export default function TaskList({
                   type="checkbox"
                   checked={isCompleted}
                   onChange={() => handleToggleComplete(task.id)}
-                  className="form-checkbox mt-1 h-5 w-5 shrink-0 text-red-600 rounded border-zinc-300 focus:ring-red-500 dark:border-zinc-600 dark:bg-zinc-900"
-                  aria-label={isCompleted ? "Mark as active" : "Mark as completed"}
+                  className="form-checkbox mt-1 h-5 w-5 shrink-0 rounded border-zinc-300 text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:border-zinc-600 dark:bg-zinc-900 dark:focus-visible:ring-offset-zinc-900"
+                  aria-label={
+                    isCompleted
+                      ? `Mark task "${displayTitle}" as active`
+                      : `Mark task "${displayTitle}" as completed`
+                  }
                   tabIndex={isEditing ? -1 : 0}
                 />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -346,13 +438,13 @@ export default function TaskList({
                           value={editTitle}
                           onChange={handleEditChange}
                           onKeyDown={e => handleKeyDown(e, task.id)}
-                          onBlur={() => handleInputBlur(task.id)}
-                          className="min-w-0 flex-1 rounded-lg border border-red-400 bg-zinc-50 px-2 py-1.5 text-sm outline-none focus:border-red-500 focus:bg-white dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                          onBlur={handleCancel}
+                          className="min-w-0 flex-1 rounded-lg border border-red-400 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-900 outline-none focus-visible:border-red-500 focus-visible:bg-white focus-visible:text-zinc-900 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:focus-visible:border-red-500 dark:focus-visible:bg-zinc-950 dark:focus-visible:text-zinc-50 dark:focus-visible:ring-offset-zinc-900"
                           aria-label="Edit task title"
                         />
                         <button
                           type="submit"
-                          className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                          className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
                           tabIndex={0}
                         >
                           Save
@@ -360,7 +452,7 @@ export default function TaskList({
                         <button
                           type="button"
                           onClick={handleCancel}
-                          className="rounded bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                          className="rounded bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
                           tabIndex={0}
                         >
                           Cancel
@@ -376,7 +468,7 @@ export default function TaskList({
                             handleEditClick(task.id);
                           }
                         }}
-                        className={`min-w-0 flex-1 cursor-pointer text-zinc-900 dark:text-zinc-100 transition-all outline-none ring-offset-1 ring-zinc-400 focus:ring-2 ${
+                        className={`min-w-0 flex-1 cursor-pointer rounded-sm text-left text-zinc-900 outline-none ring-offset-2 transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 dark:text-zinc-100 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900 ${
                           isCompleted ? "line-through text-zinc-400 dark:text-zinc-500" : ""
                         }`}
                         aria-label={`Edit task "${displayTitle}"`}
@@ -390,9 +482,9 @@ export default function TaskList({
                     {!isEditing && (
                       <span
                         title="Drag to reorder"
-                        className="shrink-0 pl-2 text-xl cursor-grab select-none text-zinc-400 dark:text-zinc-600"
+                        className="shrink-0 cursor-grab select-none pl-2 text-xl text-zinc-400 dark:text-zinc-600"
                         style={{ userSelect: "none" }}
-                        aria-label="Drag to reorder"
+                        aria-hidden
                       >
                         ≡
                       </span>
@@ -404,7 +496,7 @@ export default function TaskList({
               <button
                 type="button"
                 onClick={() => handleDelete(task.id)}
-                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 dark:bg-red-600 dark:hover:bg-red-700"
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus-visible:ring-offset-zinc-900"
                 aria-label="Delete task"
               >
                 Delete
@@ -415,25 +507,33 @@ export default function TaskList({
       </ul>
       {/* Simple Modal for Delete Confirmation */}
       {showDeleteDialog && (
-        <div className="modal-bg">
+        <div className="modal-bg" role="presentation">
           <div
             ref={deleteModalRef}
-            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-md p-6 z-50 flex flex-col gap-4 min-w-[280px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-delete-dialog-title"
+            className="z-50 flex min-w-[280px] flex-col gap-4 rounded-lg border border-zinc-300 bg-white p-6 shadow-md dark:border-zinc-700 dark:bg-zinc-900"
             tabIndex={-1}
           >
-            <div className="text-zinc-900 dark:text-zinc-100 font-medium">
+            <div
+              id="task-delete-dialog-title"
+              className="font-medium text-zinc-900 dark:text-zinc-100"
+            >
               Are you sure you want to delete this task?
             </div>
             <div className="flex justify-end gap-2">
               <button
+                type="button"
                 onClick={cancelDelete}
-                className="rounded bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                className="rounded bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={confirmDelete}
-                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 dark:bg-red-600 dark:hover:bg-red-700"
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus-visible:ring-offset-zinc-900"
                 autoFocus
               >
                 Delete
@@ -445,3 +545,5 @@ export default function TaskList({
     </>
   );
 }
+
+export default memo(TaskList);
