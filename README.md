@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Task Manager
 
-## Getting Started
+A client-side task manager built with Next.js (App Router). Tasks live in the browser: add, edit, filter, search, and organize them without a backend.
 
-First, run the development server:
+## Features
+
+- **Tasks** — Add tasks with optional **priority** (High / Medium / Low) and **due date**. **Edit** titles inline (keyboard: activate with Enter/Space on the title, save with Enter, cancel with Escape). **Delete** with a confirmation dialog.
+- **Filters** — Show **All**, **Active**, or **Completed** tasks.
+- **Search** — Debounced search across title, priority, and due date; matching text is **highlighted** in the list.
+- **Reorder** — **Drag-and-drop** to reorder rows. **Keyboard:** use **Move up** / **Move down** on each row (toolbar also notes that drag is mouse-oriented and buttons are for keyboard users).
+- **Persistence** — Tasks are saved to **`localStorage`** under the key **`task-manager-tasks`**. Corrupt or unreadable data falls back to an empty list with an error toast.
+- **Theme** — **Light** / **dark** toggle; preference is stored under **`task-manager-theme`** and respects `prefers-color-scheme` until you choose a theme.
+- **Feedback** — **Toasts** for successes (add, update, delete) and errors (e.g. storage read/write failures).
+- **Accessibility** — **Skip to main content** link, form and control **`aria-label`s**, validation **`aria-invalid`** / **`aria-describedby`**, delete **dialog** pattern, toast **`role="alert"`** / **`aria-live`** where appropriate, and reorder controls exposed for keyboard and screen readers.
+
+> **Note:** List order from drag-and-drop or move buttons is kept in component state for the current session. After a full page reload, tasks appear in the order stored in `localStorage` (typically creation/update order).
+
+## Tech stack
+
+- [Next.js](https://nextjs.org/) 16 (App Router), React 19, TypeScript
+- [Tailwind CSS](https://tailwindcss.com/) v4
+- Tests: Jest, Testing Library (`@testing-library/react`, `user-event`)
+
+## Getting started
+
+**Requirements:** Node.js 20+ recommended (aligns with `@types/node` in the project).
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command           | Description              |
+| ----------------- | ------------------------ |
+| `npm run dev`     | Development server       |
+| `npm run build`   | Production build         |
+| `npm run start`   | Run production server    |
+| `npm run lint`    | ESLint                   |
+| `npm test`        | Run tests once           |
+| `npm run test:watch` | Jest in watch mode   |
 
-## Learn More
+## Project structure (overview)
 
-To learn more about Next.js, take a look at the following resources:
+- `app/` — App Router entry (`page.tsx`), global styles, `error.tsx` / `global-error.tsx` for unexpected errors
+- `components/` — UI: task form, list, rows, search, theme toggle, toasts, dialogs
+- `hooks/` — `useLocalStorage`, `useToasts`
+- `lib/` — Types, storage helpers, search/highlight utilities, theme init script
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Environment & deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+No environment variables are required for core functionality. The app can be deployed like any Next.js app (e.g. [Vercel](https://vercel.com/)). Data stays in each visitor’s browser only.
 
-## Deploy on Vercel
+## Learn more
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Next.js documentation](https://nextjs.org/docs)
