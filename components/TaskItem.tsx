@@ -1,7 +1,23 @@
 "use client";
 
 import { useState, useEffect, FormEvent, useRef } from "react";
-import type { Task } from "@/lib/types";
+import type { Task, TaskPriority } from "@/lib/types";
+import { DueDateLabel } from "@/components/DueDateLabel";
+
+const priorityBadgeClass: Record<TaskPriority, string> = {
+  High: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800 ring-1 ring-inset ring-red-600/20 dark:bg-red-950/50 dark:text-red-200 dark:ring-red-500/30",
+  Medium:
+    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-600/20 dark:bg-yellow-950/50 dark:text-yellow-200 dark:ring-yellow-500/30",
+  Low: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 ring-1 ring-inset ring-green-600/20 dark:bg-green-950/50 dark:text-green-200 dark:ring-green-500/30",
+};
+
+export function PriorityBadge({ priority }: { priority: TaskPriority }) {
+  return (
+    <span className={priorityBadgeClass[priority]}>
+      {priority}
+    </span>
+  );
+}
 
 interface TaskItemProps {
   task: Task;
@@ -123,6 +139,7 @@ export default function TaskItem({
         onSubmit={handleSubmit}
         className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800/50"
       >
+        <PriorityBadge priority={task.priority} />
         <input
           type="text"
           value={editTitle}
@@ -161,9 +178,13 @@ export default function TaskItem({
             : undefined
         }
       >
-        <span className="min-w-0 flex-1 text-zinc-900 dark:text-zinc-100">
-          {task.title}
-        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-zinc-900 dark:text-zinc-100">
+          <div className="flex min-w-0 items-center gap-2">
+            <PriorityBadge priority={task.priority} />
+            <span className="min-w-0 flex-1">{task.title}</span>
+          </div>
+          <DueDateLabel task={task} />
+        </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"

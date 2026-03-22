@@ -1,20 +1,30 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import type { TaskPriority } from "@/lib/types";
 
 interface TaskFormProps {
-  onSubmit?: (title: string) => void;
+  onSubmit?: (
+    title: string,
+    priority: TaskPriority,
+    dueDate: string | null
+  ) => void;
 }
 
 export default function TaskForm({ onSubmit }: TaskFormProps) {
   const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState<TaskPriority>("Medium");
+  const [dueDate, setDueDate] = useState("");
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = title.trim();
     if (trimmed) {
-      onSubmit?.(trimmed);
+      const due = dueDate.trim() || null;
+      onSubmit?.(trimmed, priority, due);
       setTitle("");
+      setPriority("Medium");
+      setDueDate("");
     }
   }
 
@@ -30,6 +40,23 @@ export default function TaskForm({ onSubmit }: TaskFormProps) {
         placeholder="What needs to be done?"
         className="flex-1 rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-zinc-900 placeholder-zinc-500 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-400 dark:focus:border-zinc-400 dark:focus:ring-zinc-700"
         aria-label="Task title"
+      />
+      <select
+        value={priority}
+        onChange={(e) => setPriority(e.target.value as TaskPriority)}
+        aria-label="Task priority"
+        className="rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400 dark:focus:ring-zinc-700 sm:w-auto sm:min-w-[8.5rem]"
+      >
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+      <input
+        type="date"
+        value={dueDate}
+        onChange={(e) => setDueDate(e.target.value)}
+        aria-label="Due date (optional)"
+        className="rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:[color-scheme:dark] dark:focus:border-zinc-400 dark:focus:ring-zinc-700 sm:w-auto"
       />
       <button
         type="submit"

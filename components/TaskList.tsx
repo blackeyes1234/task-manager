@@ -1,23 +1,33 @@
 "use client";
 
 import type { Task } from "@/lib/types";
+import { DueDateLabel } from "@/components/DueDateLabel";
+import HighlightedText from "@/components/HighlightedText";
+import { PriorityBadge } from "@/components/TaskItem";
 import { useState, useRef, useEffect } from "react";
 
 interface TaskListProps {
   tasks: Task[];
+  /** Debounced search string; used to highlight matches in titles. */
+  highlightQuery?: string;
+  /** True when status filter has tasks but search returned none. */
+  noResultsFromSearch?: boolean;
   recentlyAddedId?: string | null;
   onUpdate: (id: string, title: string) => void;
   onDelete: (id: string) => void;
+  onToggleComplete: (id: string) => void;
 }
 
 export default function TaskList({
   tasks: initialTasks,
+  highlightQuery = "",
+  noResultsFromSearch = false,
   recentlyAddedId = null,
   onUpdate,
   onDelete,
+  onToggleComplete,
 }: TaskListProps) {
   const [taskOrder, setTaskOrder] = useState<string[]>(initialTasks.map(t => t.id));
-  const [completedTasks, setCompletedTasks] = useState<{ [id: string]: boolean }>({});
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState<string>("");
   const [localTitles, setLocalTitles] = useState<{ [id: string]: string }>({});
@@ -84,10 +94,7 @@ export default function TaskList({
   }, [showDeleteDialog]);
 
   const handleToggleComplete = (taskId: string) => {
-    setCompletedTasks((prev) => ({
-      ...prev,
-      [taskId]: !prev[taskId],
-    }));
+    onToggleComplete(taskId);
   };
 
   const handleEditClick = (taskId: string) => {
@@ -219,6 +226,22 @@ export default function TaskList({
   };
 
   if (initialTasks.length === 0) {
+    if (noResultsFromSearch) {
+      return (
+        <div
+          className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50/80 px-4 py-8 text-center dark:border-zinc-600 dark:bg-zinc-900/40"
+          role="status"
+        >
+          <p className="font-medium text-zinc-800 dark:text-zinc-200">
+            No tasks match your search.
+          </p>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+            Try different keywords, clear the search, or switch your{" "}
+            <span className="font-medium">All / Active / Completed</span> filter.
+          </p>
+        </div>
+      );
+    }
     return (
       <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
         No tasks yet. Add one above.
@@ -267,7 +290,7 @@ export default function TaskList({
         {taskOrder.map((taskId, idx) => {
           const task = findTask(taskId);
           if (!task) return null;
-          const isCompleted = !!completedTasks[task.id];
+          const isCompleted = task.completed;
           const isEditing = editingTaskId === task.id;
           const displayTitle = localTitles[task.id] ?? task.title;
           const dragging = draggedId === task.id;
@@ -297,77 +320,86 @@ export default function TaskList({
               tabIndex={-1}
               style={{ cursor: isEditing ? "default" : "grab", userSelect: "none" }}
             >
-              <div className="flex items-center gap-2 flex-1">
+              <div className="flex items-start gap-2 flex-1">
                 <input
                   type="checkbox"
                   checked={isCompleted}
                   onChange={() => handleToggleComplete(task.id)}
-                  className="form-checkbox h-5 w-5 text-red-600 rounded border-zinc-300 focus:ring-red-500 dark:border-zinc-600 dark:bg-zinc-900"
+                  className="form-checkbox mt-1 h-5 w-5 shrink-0 text-red-600 rounded border-zinc-300 focus:ring-red-500 dark:border-zinc-600 dark:bg-zinc-900"
                   aria-label={isCompleted ? "Mark as active" : "Mark as completed"}
                   tabIndex={isEditing ? -1 : 0}
                 />
-                {isEditing ? (
-                  <form
-                    className="flex flex-1 gap-2"
-                    onSubmit={e => {
-                      e.preventDefault();
-                      handleSave(task.id);
-                    }}
-                  >
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={editTitle}
-                      onChange={handleEditChange}
-                      onKeyDown={e => handleKeyDown(e, task.id)}
-                      onBlur={() => handleInputBlur(task.id)}
-                      className="min-w-0 flex-1 rounded-lg border border-red-400 bg-zinc-50 px-2 py-1.5 text-sm outline-none focus:border-red-500 focus:bg-white dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-                      aria-label="Edit task title"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                      tabIndex={0}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCancel}
-                      className="rounded bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
-                      tabIndex={0}
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                ) : (
-                  <span
-                    tabIndex={0}
-                    role="button"
-                    onClick={() => handleEditClick(task.id)}
-                    onKeyDown={e => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        handleEditClick(task.id);
-                      }
-                    }}
-                    className={`min-w-0 flex-1 cursor-pointer text-zinc-900 dark:text-zinc-100 transition-all outline-none ring-offset-1 ring-zinc-400 focus:ring-2 ${
-                      isCompleted ? "line-through text-zinc-400 dark:text-zinc-500" : ""
-                    }`}
-                    aria-label={`Edit task "${displayTitle}"`}
-                  >
-                    {displayTitle}
-                  </span>
-                )}
-                {!isEditing && (
-                  <span
-                    title="Drag to reorder"
-                    className="pl-2 text-xl cursor-grab select-none text-zinc-400 dark:text-zinc-600"
-                    style={{ userSelect: "none" }}
-                    aria-label="Drag to reorder"
-                  >
-                    ≡
-                  </span>
-                )}
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <PriorityBadge priority={task.priority} />
+                    {isEditing ? (
+                      <form
+                        className="flex min-w-0 flex-1 gap-2"
+                        onSubmit={e => {
+                          e.preventDefault();
+                          handleSave(task.id);
+                        }}
+                      >
+                        <input
+                          ref={inputRef}
+                          type="text"
+                          value={editTitle}
+                          onChange={handleEditChange}
+                          onKeyDown={e => handleKeyDown(e, task.id)}
+                          onBlur={() => handleInputBlur(task.id)}
+                          className="min-w-0 flex-1 rounded-lg border border-red-400 bg-zinc-50 px-2 py-1.5 text-sm outline-none focus:border-red-500 focus:bg-white dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                          aria-label="Edit task title"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                          tabIndex={0}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancel}
+                          className="rounded bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                          tabIndex={0}
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    ) : (
+                      <span
+                        tabIndex={0}
+                        role="button"
+                        onClick={() => handleEditClick(task.id)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            handleEditClick(task.id);
+                          }
+                        }}
+                        className={`min-w-0 flex-1 cursor-pointer text-zinc-900 dark:text-zinc-100 transition-all outline-none ring-offset-1 ring-zinc-400 focus:ring-2 ${
+                          isCompleted ? "line-through text-zinc-400 dark:text-zinc-500" : ""
+                        }`}
+                        aria-label={`Edit task "${displayTitle}"`}
+                      >
+                        <HighlightedText
+                          text={displayTitle}
+                          query={highlightQuery}
+                        />
+                      </span>
+                    )}
+                    {!isEditing && (
+                      <span
+                        title="Drag to reorder"
+                        className="shrink-0 pl-2 text-xl cursor-grab select-none text-zinc-400 dark:text-zinc-600"
+                        style={{ userSelect: "none" }}
+                        aria-label="Drag to reorder"
+                      >
+                        ≡
+                      </span>
+                    )}
+                  </div>
+                  {!isEditing && <DueDateLabel task={task} />}
+                </div>
               </div>
               <button
                 type="button"
