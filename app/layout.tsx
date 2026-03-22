@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getThemeInitScript } from "@/lib/theme";
 import "./globals.css";
@@ -35,6 +36,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: getThemeInitScript() }}
         />
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );
