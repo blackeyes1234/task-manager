@@ -180,7 +180,7 @@ export default function TaskManagerApp() {
       >
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+            <h1 className="text-[60px] font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
               Task Manager
             </h1>
             <p className="mt-1 text-zinc-600 dark:text-zinc-400">
