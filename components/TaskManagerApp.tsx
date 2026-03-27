@@ -4,18 +4,19 @@ import {
   useState,
   useCallback,
   useMemo,
-  useRef,
   startTransition,
+  useEffect,
+  useRef,
 } from "react";
 import type { Task, TaskPriority } from "@/lib/types";
-import { generateId } from "@/lib/utils";
 import { taskMatchesSearchQuery } from "@/lib/taskSearch";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
 import {
-  TASK_STORAGE_KEY,
-  EMPTY_TASKS,
-  deserializeTasksFromStorage,
-} from "@/lib/taskStorage";
+  createTask,
+  deleteTaskById,
+  listTasks,
+  updateTaskCompleted,
+  updateTaskTitle,
+} from "@/lib/taskApi";
 import TaskForm from "@/components/TaskForm";
 import TaskSearchField from "@/components/TaskSearchField";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -34,44 +35,45 @@ const TaskList = dynamic(() => import("@/components/TaskList"), {
   ),
 });
 
-type PersistAction = "add" | "edit" | "delete";
-
 export default function TaskManagerApp() {
-  const lastPersistActionRef = useRef<PersistAction | null>(null);
   const { toasts, pushToast, dismissToast } = useToasts();
+  const pushToastRef = useRef(pushToast);
 
-  const [tasks, setTasks] = useLocalStorage<Task[]>(TASK_STORAGE_KEY, EMPTY_TASKS, {
-    deserialize: deserializeTasksFromStorage,
-    onReadFallback: (reason) => {
-      if (reason === "storage_error") {
-        pushToast(
-          "error",
-          "Could not read saved tasks (storage unavailable). Starting with an empty list."
-        );
-      } else {
-        pushToast(
-          "error",
-          "Saved tasks were invalid or corrupted. They were reset to keep the app working."
-        );
-      }
-    },
-    onWriteError: () => {
-      const action = lastPersistActionRef.current;
-      lastPersistActionRef.current = null;
-      if (action === "add") {
-        pushToast("error", "Failed to add task. Please try again.");
-      } else if (action === "edit") {
-        pushToast("error", "Failed to update task. Please try again.");
-      } else if (action === "delete") {
-        pushToast("error", "Failed to delete task. Please try again.");
-      } else {
-        pushToast("error", "Failed to save tasks. Please try again.");
-      }
-    },
-  });
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("All");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    pushToastRef.current = pushToast;
+  }, [pushToast]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTasks() {
+      try {
+        const loaded = await listTasks();
+        if (!cancelled) setTasks(loaded);
+      } catch {
+        if (!cancelled) {
+          pushToastRef.current(
+            "error",
+            "Could not load tasks from Supabase. Check your connection and environment variables."
+          );
+          setTasks([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoadingTasks(false);
+      }
+    }
+
+    void loadTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onDebouncedSearchChange = useCallback((query: string) => {
     startTransition(() => setDebouncedSearch(query));
@@ -101,57 +103,94 @@ export default function TaskManagerApp() {
     filteredTasks.length > 0;
 
   const addTask = useCallback(
-    (title: string, priority: TaskPriority, dueDate: string | null) => {
-      lastPersistActionRef.current = "add";
-      const id = generateId();
-      setTasks((prev) => [
-        ...prev,
-        {
-          id,
+    async (title: string, priority: TaskPriority, dueDate: string | null) => {
+      try {
+        const created = await createTask({
           title: title.trim(),
-          completed: false,
           priority,
           dueDate: dueDate ?? null,
-        },
-      ]);
-      setRecentlyAddedId(id);
-      setTimeout(() => setRecentlyAddedId(null), 450);
-      pushToast("success", "Task successfully added!");
+        });
+        setTasks((prev) => [...prev, created]);
+        setRecentlyAddedId(created.id);
+        setTimeout(() => setRecentlyAddedId(null), 450);
+        pushToast("success", "Task successfully added!");
+      } catch {
+        pushToast("error", "Failed to add task. Please try again.");
+      }
     },
-    [setTasks, pushToast]
+    [pushToast]
   );
 
   const updateTask = useCallback(
-    (id: string, title: string) => {
-      lastPersistActionRef.current = "edit";
+    async (id: string, title: string) => {
+      const trimmed = title.trim();
+      const previous = tasks.find((task) => task.id === id);
+      if (!previous) return;
+
       setTasks((prev) =>
         prev.map((task) =>
-          task.id === id ? { ...task, title: title.trim() } : task
+          task.id === id ? { ...task, title: trimmed } : task
         )
       );
-      pushToast("success", "Task updated successfully!");
+
+      try {
+        const updated = await updateTaskTitle(id, trimmed);
+        setTasks((prev) =>
+          prev.map((task) => (task.id === id ? updated : task))
+        );
+        pushToast("success", "Task updated successfully!");
+      } catch {
+        setTasks((prev) =>
+          prev.map((task) => (task.id === id ? previous : task))
+        );
+        pushToast("error", "Failed to update task. Please try again.");
+      }
     },
-    [setTasks, pushToast]
+    [tasks, pushToast]
   );
 
   const toggleTaskComplete = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      const previous = tasks.find((task) => task.id === id);
+      if (!previous) return;
+
+      const nextCompleted = !previous.completed;
+
       setTasks((prev) =>
         prev.map((task) =>
-          task.id === id ? { ...task, completed: !task.completed } : task
+          task.id === id ? { ...task, completed: nextCompleted } : task
         )
       );
+
+      try {
+        const updated = await updateTaskCompleted(id, nextCompleted);
+        setTasks((prev) =>
+          prev.map((task) => (task.id === id ? updated : task))
+        );
+      } catch {
+        setTasks((prev) =>
+          prev.map((task) => (task.id === id ? previous : task))
+        );
+        pushToast("error", "Failed to update task. Please try again.");
+      }
     },
-    [setTasks]
+    [tasks, pushToast]
   );
 
   const deleteTask = useCallback(
-    (id: string) => {
-      lastPersistActionRef.current = "delete";
+    async (id: string) => {
+      const previous = tasks;
       setTasks((prev) => prev.filter((task) => task.id !== id));
-      pushToast("success", "Task has been deleted.");
+
+      try {
+        await deleteTaskById(id);
+        pushToast("success", "Task has been deleted.");
+      } catch {
+        setTasks(previous);
+        pushToast("error", "Failed to delete task. Please try again.");
+      }
     },
-    [setTasks, pushToast]
+    [tasks, pushToast]
   );
 
   const filterOptions: TaskFilter[] = ["All", "Active", "Completed"];
@@ -180,7 +219,9 @@ export default function TaskManagerApp() {
       >
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-[60px] font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+            <h1
+              className="font-semibold tracking-tight text-zinc-900 dark:text-zinc-100 text-4xl sm:text-5xl md:text-6xl"
+            >
               Task Manager
             </h1>
             <p className="mt-1 text-zinc-600 dark:text-zinc-400">
@@ -224,15 +265,21 @@ export default function TaskManagerApp() {
 
           <TaskSearchField onDebouncedChange={onDebouncedSearchChange} />
 
-          <TaskList
-            tasks={searchFilteredTasks}
-            highlightQuery={debouncedSearch}
-            noResultsFromSearch={noResultsFromSearch}
-            recentlyAddedId={recentlyAddedId}
-            onUpdate={updateTask}
-            onDelete={deleteTask}
-            onToggleComplete={toggleTaskComplete}
-          />
+          {isLoadingTasks ? (
+            <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
+              Loading tasks from Supabase…
+            </p>
+          ) : (
+            <TaskList
+              tasks={searchFilteredTasks}
+              highlightQuery={debouncedSearch}
+              noResultsFromSearch={noResultsFromSearch}
+              recentlyAddedId={recentlyAddedId}
+              onUpdate={updateTask}
+              onDelete={deleteTask}
+              onToggleComplete={toggleTaskComplete}
+            />
+          )}
         </section>
       </main>
     </div>

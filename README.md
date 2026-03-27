@@ -1,6 +1,6 @@
 # Task Manager
 
-A client-side task manager built with Next.js (App Router). Tasks live in the browser: add, edit, filter, search, and organize them without a backend.
+A task manager built with Next.js (App Router) and Supabase. Tasks are stored in a Postgres database so your data is not limited to one browser.
 
 ## Features
 
@@ -8,17 +8,18 @@ A client-side task manager built with Next.js (App Router). Tasks live in the br
 - **Filters** — Show **All**, **Active**, or **Completed** tasks.
 - **Search** — Debounced search across title, priority, and due date; matching text is **highlighted** in the list.
 - **Reorder** — **Drag-and-drop** to reorder rows. **Keyboard:** use **Move up** / **Move down** on each row (toolbar also notes that drag is mouse-oriented and buttons are for keyboard users).
-- **Persistence** — Tasks are saved to **`localStorage`** under the key **`task-manager-tasks`**. Corrupt or unreadable data falls back to an empty list with an error toast.
+- **Persistence** — Tasks are saved in **Supabase Postgres** and loaded when the app starts.
 - **Theme** — **Light** / **dark** toggle; preference is stored under **`task-manager-theme`** and respects `prefers-color-scheme` until you choose a theme.
 - **Feedback** — **Toasts** for successes (add, update, delete) and errors (e.g. storage read/write failures).
 - **Accessibility** — **Skip to main content** link, form and control **`aria-label`s**, validation **`aria-invalid`** / **`aria-describedby`**, delete **dialog** pattern, toast **`role="alert"`** / **`aria-live`** where appropriate, and reorder controls exposed for keyboard and screen readers.
 
-> **Note:** List order from drag-and-drop or move buttons is kept in component state for the current session. After a full page reload, tasks appear in the order stored in `localStorage` (typically creation/update order).
+> **Note:** List order from drag-and-drop or move buttons is still local UI state. After a reload, tasks are ordered by creation time from the database.
 
 ## Tech stack
 
 - [Next.js](https://nextjs.org/) 16 (App Router), React 19, TypeScript
 - [Tailwind CSS](https://tailwindcss.com/) v4
+- [Supabase](https://supabase.com/) (`@supabase/supabase-js`)
 - Tests: Jest, Testing Library (`@testing-library/react`, `user-event`)
 
 ## Getting started
@@ -31,6 +32,19 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+### Supabase setup
+
+1. Create a Supabase project.
+2. Run the SQL in `supabase/schema.sql` in the Supabase SQL editor.
+3. Create `.env.local` in the project root:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+4. Restart the dev server after changing environment variables.
 
 ## Scripts
 
@@ -47,12 +61,13 @@ Open [http://localhost:3000](http://localhost:3000).
 
 - `app/` — App Router entry (`page.tsx`), global styles, `error.tsx` / `global-error.tsx` for unexpected errors
 - `components/` — UI: task form, list, rows, search, theme toggle, toasts, dialogs
-- `hooks/` — `useLocalStorage`, `useToasts`
-- `lib/` — Types, storage helpers, search/highlight utilities, theme init script
+- `hooks/` — `useToasts`
+- `lib/` — Types, Supabase client/API, search/highlight utilities, theme init script
+- `supabase/` — SQL schema used by the app
 
 ## Environment & deployment
 
-No environment variables are required for core functionality. The app can be deployed like any Next.js app (e.g. [Vercel](https://vercel.com/)). Data stays in each visitor’s browser only.
+Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in your deployment environment (e.g. [Vercel](https://vercel.com/)).
 
 ## Learn more
 

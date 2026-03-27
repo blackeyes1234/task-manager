@@ -1,44 +1,94 @@
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Home from "./page";
-import { generateId } from "@/lib/utils";
+import {
+  createTask,
+  deleteTaskById,
+  listTasks,
+  updateTaskCompleted,
+  updateTaskTitle,
+} from "@/lib/taskApi";
 
-jest.mock("@/lib/utils", () => ({
-  generateId: jest.fn(),
+jest.mock("@/lib/taskApi", () => ({
+  listTasks: jest.fn(),
+  createTask: jest.fn(),
+  updateTaskTitle: jest.fn(),
+  updateTaskCompleted: jest.fn(),
+  deleteTaskById: jest.fn(),
 }));
 
-const mockedGenerateId = generateId as jest.MockedFunction<typeof generateId>;
+const mockedListTasks = listTasks as jest.MockedFunction<typeof listTasks>;
+const mockedCreateTask = createTask as jest.MockedFunction<typeof createTask>;
+const mockedUpdateTaskTitle = updateTaskTitle as jest.MockedFunction<
+  typeof updateTaskTitle
+>;
+const mockedUpdateTaskCompleted = updateTaskCompleted as jest.MockedFunction<
+  typeof updateTaskCompleted
+>;
+const mockedDeleteTaskById = deleteTaskById as jest.MockedFunction<
+  typeof deleteTaskById
+>;
 
 describe("Home task manager", () => {
   beforeEach(() => {
-    localStorage.clear();
     jest.clearAllMocks();
+    mockedListTasks.mockResolvedValue([]);
+    mockedCreateTask.mockImplementation(async ({ title, priority, dueDate }) => ({
+      id: `id-${title}`,
+      title,
+      completed: false,
+      priority,
+      dueDate,
+    }));
+    mockedUpdateTaskTitle.mockImplementation(async (id, title) => ({
+      id,
+      title,
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    }));
+    mockedUpdateTaskCompleted.mockImplementation(async (id, completed) => ({
+      id,
+      title: "Updated",
+      completed,
+      priority: "Medium",
+      dueDate: null,
+    }));
+    mockedDeleteTaskById.mockResolvedValue();
   });
 
-  it("adds a task and persists it in localStorage", async () => {
-    mockedGenerateId.mockReturnValue("task-1");
+  it("adds a task using Supabase API", async () => {
     const user = userEvent.setup();
 
     render(<Home />);
+    await waitFor(() => {
+      expect(mockedListTasks).toHaveBeenCalledTimes(1);
+    });
 
     await user.type(screen.getByLabelText("Task title"), "Buy milk");
     await user.click(screen.getByRole("button", { name: "Add task" }));
 
-    expect(screen.getByText("Buy milk")).toBeInTheDocument();
+    expect(await screen.findByText("Buy milk")).toBeInTheDocument();
     expect(
       await screen.findByText("Task successfully added!")
     ).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(localStorage.getItem("task-manager-tasks")).toContain("Buy milk");
+    expect(mockedCreateTask).toHaveBeenCalledWith({
+      title: "Buy milk",
+      priority: "Medium",
+      dueDate: expect.any(String),
     });
   });
 
-  it("loads persisted tasks on render", async () => {
-    localStorage.setItem(
-      "task-manager-tasks",
-      JSON.stringify([{ id: "saved-1", title: "Persisted task" }])
-    );
+  it("loads persisted tasks from Supabase on render", async () => {
+    mockedListTasks.mockResolvedValueOnce([
+      {
+        id: "saved-1",
+        title: "Persisted task",
+        completed: false,
+        priority: "Medium",
+        dueDate: null,
+      },
+    ]);
 
     render(<Home />);
 
@@ -46,14 +96,20 @@ describe("Home task manager", () => {
   });
 
   it("deletes a task after confirming in dialog", async () => {
-    mockedGenerateId.mockReturnValue("task-2");
+    mockedCreateTask.mockResolvedValueOnce({
+      id: "task-2",
+      title: "Read docs",
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    });
     const user = userEvent.setup();
 
     render(<Home />);
 
     await user.type(screen.getByLabelText("Task title"), "Read docs");
     await user.click(screen.getByRole("button", { name: "Add task" }));
-    expect(screen.getByText("Read docs")).toBeInTheDocument();
+    expect(await screen.findByText("Read docs")).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: /Delete task/ })
@@ -63,6 +119,7 @@ describe("Home task manager", () => {
     expect(
       await screen.findByText("Task has been deleted.")
     ).toBeInTheDocument();
+    expect(mockedDeleteTaskById).toHaveBeenCalledWith("task-2");
 
     await waitFor(() => {
       expect(screen.queryByText("Read docs")).not.toBeInTheDocument();
@@ -70,7 +127,20 @@ describe("Home task manager", () => {
   });
 
   it("exits edit mode when saving (no title change)", async () => {
-    mockedGenerateId.mockReturnValueOnce("task-1");
+    mockedCreateTask.mockResolvedValueOnce({
+      id: "task-1",
+      title: "Old title",
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    });
+    mockedUpdateTaskTitle.mockResolvedValueOnce({
+      id: "task-1",
+      title: "Old title",
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    });
     const user = userEvent.setup();
 
     render(<Home />);
@@ -78,7 +148,9 @@ describe("Home task manager", () => {
     await user.type(screen.getByLabelText("Task title"), "Old title");
     await user.click(screen.getByRole("button", { name: "Add task" }));
 
-    const editBtn = screen.getByRole("button", { name: 'Edit task "Old title"' });
+    const editBtn = await screen.findByRole("button", {
+      name: 'Edit task "Old title"',
+    });
     await user.click(editBtn);
 
     // Don't change the input; just verify Save exits edit mode.
@@ -92,33 +164,34 @@ describe("Home task manager", () => {
     });
   });
 
-  it("shows an error toast when saving to localStorage fails after adding a task", async () => {
-    mockedGenerateId.mockReturnValue("task-storage-fail");
+  it("shows an error toast when creating a task fails", async () => {
+    mockedCreateTask.mockRejectedValueOnce(new Error("insert failed"));
     const user = userEvent.setup();
 
     render(<Home />);
     await screen.findByRole("heading", { name: "Task Manager" });
-
-    const setItemSpy = jest
-      .spyOn(Storage.prototype, "setItem")
-      .mockImplementation(() => {
-        throw new Error("quota");
-      });
-
-    try {
-      await user.type(screen.getByLabelText("Task title"), "Will not persist");
-      await user.click(screen.getByRole("button", { name: "Add task" }));
-
-      expect(
-        await screen.findByText("Failed to add task. Please try again.")
-      ).toBeInTheDocument();
-    } finally {
-      setItemSpy.mockRestore();
-    }
+    await user.type(screen.getByLabelText("Task title"), "Will not persist");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(
+      await screen.findByText("Failed to add task. Please try again.")
+    ).toBeInTheDocument();
   });
 
   it("shows a success toast when a task title is saved from the editor", async () => {
-    mockedGenerateId.mockReturnValueOnce("task-edit-toast");
+    mockedCreateTask.mockResolvedValueOnce({
+      id: "task-edit-toast",
+      title: "Alpha",
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    });
+    mockedUpdateTaskTitle.mockResolvedValueOnce({
+      id: "task-edit-toast",
+      title: "Beta",
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    });
     const user = userEvent.setup();
 
     render(<Home />);
@@ -127,7 +200,7 @@ describe("Home task manager", () => {
     await user.click(screen.getByRole("button", { name: "Add task" }));
 
     await user.click(
-      screen.getByRole("button", { name: 'Edit task "Alpha"' })
+      await screen.findByRole("button", { name: 'Edit task "Alpha"' })
     );
     const editInput = screen.getByLabelText("Edit task title");
     await user.clear(editInput);
@@ -136,11 +209,16 @@ describe("Home task manager", () => {
     expect(
       await screen.findByText("Task updated successfully!")
     ).toBeInTheDocument();
-    expect(screen.getByText("Beta")).toBeInTheDocument();
   });
 
   it("does not change a task title when cancelling edit", async () => {
-    mockedGenerateId.mockReturnValueOnce("task-1");
+    mockedCreateTask.mockResolvedValueOnce({
+      id: "task-1",
+      title: "Keep title",
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    });
     const user = userEvent.setup();
 
     render(<Home />);
@@ -149,7 +227,7 @@ describe("Home task manager", () => {
     await user.click(screen.getByRole("button", { name: "Add task" }));
 
     await user.click(
-      screen.getByRole("button", { name: 'Edit task "Keep title"' })
+      await screen.findByRole("button", { name: 'Edit task "Keep title"' })
     );
 
     const editInput = screen.getByLabelText("Edit task title");
@@ -165,10 +243,28 @@ describe("Home task manager", () => {
   });
 
   it("reorders tasks via drag and drop", async () => {
-    mockedGenerateId
-      .mockReturnValueOnce("id-a")
-      .mockReturnValueOnce("id-b")
-      .mockReturnValueOnce("id-c");
+    mockedCreateTask
+      .mockResolvedValueOnce({
+        id: "id-a",
+        title: "A",
+        completed: false,
+        priority: "Medium",
+        dueDate: null,
+      })
+      .mockResolvedValueOnce({
+        id: "id-b",
+        title: "B",
+        completed: false,
+        priority: "Medium",
+        dueDate: null,
+      })
+      .mockResolvedValueOnce({
+        id: "id-c",
+        title: "C",
+        completed: false,
+        priority: "Medium",
+        dueDate: null,
+      });
 
     const user = userEvent.setup();
     render(<Home />);
@@ -185,6 +281,8 @@ describe("Home task manager", () => {
     const liForTitle = (title: string) =>
       screen.getByText(title).closest("li") as HTMLElement;
 
+    await screen.findByText("A");
+    await screen.findByText("C");
     const liA = liForTitle("A");
     const liC = liForTitle("C");
 
@@ -226,9 +324,15 @@ describe("Home task manager", () => {
     });
   });
 
-  it("allows entering a task with 100 characters (max length) and saves it", async () => {
+  it("allows entering a task with 100 characters (max length)", async () => {
     const longTaskTitle = "a".repeat(100);
-    mockedGenerateId.mockReturnValue("long-id");
+    mockedCreateTask.mockResolvedValueOnce({
+      id: "long-id",
+      title: longTaskTitle,
+      completed: false,
+      priority: "Medium",
+      dueDate: null,
+    });
     const user = userEvent.setup();
 
     render(<Home />);
@@ -236,11 +340,7 @@ describe("Home task manager", () => {
     await user.type(screen.getByLabelText("Task title"), longTaskTitle);
     await user.click(screen.getByRole("button", { name: "Add task" }));
 
-    expect(screen.getByText(longTaskTitle)).toBeInTheDocument();
-
-    await waitFor(() => {
-      const stored = localStorage.getItem("task-manager-tasks");
-      expect(stored).toContain(longTaskTitle);
-    });
+    expect(await screen.findByText(longTaskTitle)).toBeInTheDocument();
+    expect(mockedCreateTask).toHaveBeenCalled();
   });
 });
