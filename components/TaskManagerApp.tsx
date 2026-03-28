@@ -134,16 +134,13 @@ export default function TaskManagerApp() {
       }, 120);
     };
 
+    // No client-side filter: RLS limits postgres_changes to this user's rows; avoids missing
+    // UPDATEs (e.g. position-only) when replica identity would not satisfy user_id filters.
     const channel = supabase
       .channel(`tasks-sync:${user.id}`)
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tasks",
-          filter: `user_id=eq.${user.id}`,
-        },
+        { event: "*", schema: "public", table: "tasks" },
         refreshFromServer
       )
       .subscribe();

@@ -10,7 +10,7 @@ A task manager built with Next.js (App Router) and Supabase. Tasks are stored in
 - **Reorder** — **Drag-and-drop** to reorder rows. **Keyboard:** use **Move up** / **Move down** on each row. Order is **saved in Supabase** (`position` per task). While **search** has text, reorder is disabled (clear search to drag or use move buttons).
 - **Sign-in** — **Google** OAuth via Supabase Auth. Tasks are private to your account.
 - **Persistence** — Tasks are saved in **Supabase Postgres** (per user) and loaded after sign-in.
-- **Live updates** — While signed in, the list **refreshes from the server** when tasks change (Supabase **Realtime** on `tasks`, plus a refetch when you **return to the tab**). Run `supabase/migration_enable_realtime_tasks.sql` once so Postgres publishes `tasks` to Realtime.
+- **Live updates** — While signed in, the list **refreshes from the server** when tasks change (Supabase **Realtime** on `tasks`, plus a refetch when you **return to the tab**). That includes **reorder** (drag or move up/down) on another device once the DB migration below is applied. Run `supabase/migration_enable_realtime_tasks.sql` once so Postgres publishes `tasks` to Realtime, and `supabase/migration_realtime_and_atomic_reorder.sql` once so **position updates** broadcast reliably and **reorder is atomic** (single RPC).
 - **Theme** — **Light** / **dark** toggle; preference is stored under **`task-manager-theme`** and respects `prefers-color-scheme` until you choose a theme.
 - **Feedback** — **Toasts** for successes (add, update, delete) and errors (e.g. storage read/write failures).
 - **Accessibility** — **Skip to main content** link, form and control **`aria-label`s**, validation **`aria-invalid`** / **`aria-describedby`**, delete **dialog** pattern, toast **`role="alert"`** / **`aria-live`** where appropriate, and reorder controls exposed for keyboard and screen readers.
@@ -41,7 +41,8 @@ Open [http://localhost:3000](http://localhost:3000).
 2. Run the SQL in `supabase/schema.sql` in the Supabase SQL editor.  
    If you already had a `tasks` table without `user_id`, run `supabase/migration_add_user_rls.sql` instead (or after aligning your table).  
    If your `tasks` table has no `position` column yet, run `supabase/migration_add_task_position.sql` once.  
-   For **updates from other devices/tabs**, run `supabase/migration_enable_realtime_tasks.sql` once (or enable **Replication** for `tasks` under **Database → Publications** in the dashboard).
+   For **updates from other devices/tabs**, run `supabase/migration_enable_realtime_tasks.sql` once (or enable **Replication** for `tasks` under **Database → Publications** in the dashboard).  
+   For **live reorder sync**, also run `supabase/migration_realtime_and_atomic_reorder.sql` once (`replica identity full` + `reorder_tasks` RPC).
 3. **Authentication → Providers → Google**: enable and add your Google OAuth client ID/secret (Google Cloud Console). Under **URL configuration**, add your site URL and redirect URLs (e.g. `http://localhost:3000/**`, `https://your-app.vercel.app/**`).
 4. Create `.env.local` in the project root:
 

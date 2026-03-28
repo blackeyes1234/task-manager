@@ -131,13 +131,9 @@ export async function reorderTasks(
   client: SupabaseClient,
   orderedIds: string[]
 ): Promise<void> {
-  const results = await Promise.all(
-    orderedIds.map((id, position) =>
-      client.from("tasks").update({ position }).eq("id", id)
-    )
-  );
-
-  for (const r of results) {
-    if (r.error) throw r.error;
-  }
+  if (orderedIds.length === 0) return;
+  const { error } = await client.rpc("reorder_tasks", {
+    p_ordered_ids: orderedIds,
+  });
+  if (error) throw error;
 }

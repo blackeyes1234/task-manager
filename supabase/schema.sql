@@ -17,6 +17,8 @@ create index if not exists tasks_user_id_idx on public.tasks (user_id);
 create index if not exists tasks_user_position_idx on public.tasks (user_id, position);
 create index if not exists tasks_user_created_at_idx on public.tasks (user_id, created_at);
 
+alter table public.tasks replica identity full;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -64,3 +66,27 @@ on public.tasks
 for delete
 to authenticated
 using (auth.uid() = user_id);
+
+create or replace function public.reorder_tasks(p_ordered_ids uuid[])
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if p_ordered_ids is null then
+    return;
+  end if;
+
+  update public.tasks as t
+  set position = u.pos
+  from (
+    select id, (ord - 1)::integer as pos
+    from unnest(p_ordered_ids) with ordinality as q(id, ord)
+  ) as u
+  where t.id = u.id
+    and t.user_id = auth.uid();
+end;
+$$;
+
+grant execute on function public.reorder_tasks(uuid[]) to authenticated;
