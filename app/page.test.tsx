@@ -53,6 +53,10 @@ function mockSignedInSupabase() {
     aud: "authenticated",
     created_at: "",
   };
+  const mockChannel = {
+    on: jest.fn().mockReturnThis(),
+    subscribe: jest.fn().mockReturnThis(),
+  };
   mockedCreateBrowserSupabaseClient.mockReturnValue({
     auth: {
       getSession: jest.fn().mockResolvedValue({
@@ -73,7 +77,9 @@ function mockSignedInSupabase() {
       signInWithOAuth: jest.fn(),
       signOut: jest.fn().mockResolvedValue({ error: null }),
     },
-  } as ReturnType<typeof createBrowserSupabaseClient>);
+    channel: jest.fn(() => mockChannel),
+    removeChannel: jest.fn().mockResolvedValue("ok"),
+  } as unknown as ReturnType<typeof createBrowserSupabaseClient>);
 }
 
 describe("Home task manager", () => {

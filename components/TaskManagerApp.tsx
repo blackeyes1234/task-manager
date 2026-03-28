@@ -116,6 +116,51 @@ export default function TaskManagerApp() {
     };
   }, [authReady, user, supabase]);
 
+  useEffect(() => {
+    if (!authReady || !user) return;
+
+    let cancelled = false;
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const refreshFromServer = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = undefined;
+        void listTasks(supabase)
+          .then((loaded) => {
+            if (!cancelled) setTasks(loaded);
+          })
+          .catch(() => {});
+      }, 120);
+    };
+
+    const channel = supabase
+      .channel(`tasks-sync:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+          filter: `user_id=eq.${user.id}`,
+        },
+        refreshFromServer
+      )
+      .subscribe();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshFromServer();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      void supabase.removeChannel(channel);
+    };
+  }, [authReady, user, supabase]);
+
   const onDebouncedSearchChange = useCallback((query: string) => {
     startTransition(() => setDebouncedSearch(query));
   }, []);
