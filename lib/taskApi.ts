@@ -31,10 +31,28 @@ async function requireUserId(client: SupabaseClient) {
   return user.id;
 }
 
+async function nextTaskPosition(client: SupabaseClient): Promise<number> {
+  const { data, error } = await client
+    .from("tasks")
+    .select("position")
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  const max =
+    data && typeof data === "object" && "position" in data
+      ? Number((data as { position: number }).position)
+      : NaN;
+  if (!Number.isFinite(max)) return 0;
+  return max + 1;
+}
+
 export async function listTasks(client: SupabaseClient): Promise<Task[]> {
   const { data, error } = await client
     .from("tasks")
     .select("id,title,completed,priority,due_date")
+    .order("position", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) throw error;
@@ -50,6 +68,8 @@ export async function createTask(
   }
 ): Promise<Task> {
   const userId = await requireUserId(client);
+  const position = await nextTaskPosition(client);
+
   const { data, error } = await client
     .from("tasks")
     .insert({
@@ -58,6 +78,7 @@ export async function createTask(
       due_date: input.dueDate,
       completed: false,
       user_id: userId,
+      position,
     })
     .select("id,title,completed,priority,due_date")
     .single();
@@ -104,4 +125,19 @@ export async function deleteTaskById(
 ): Promise<void> {
   const { error } = await client.from("tasks").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function reorderTasks(
+  client: SupabaseClient,
+  orderedIds: string[]
+): Promise<void> {
+  const results = await Promise.all(
+    orderedIds.map((id, position) =>
+      client.from("tasks").update({ position }).eq("id", id)
+    )
+  );
+
+  for (const r of results) {
+    if (r.error) throw r.error;
+  }
 }

@@ -7,14 +7,14 @@ A task manager built with Next.js (App Router) and Supabase. Tasks are stored in
 - **Tasks** — Add tasks with optional **priority** (High / Medium / Low) and **due date**. **Edit** titles inline (keyboard: activate with Enter/Space on the title, save with Enter, cancel with Escape). **Delete** with a confirmation dialog.
 - **Filters** — Show **All**, **Active**, or **Completed** tasks.
 - **Search** — Debounced search across title, priority, and due date; matching text is **highlighted** in the list.
-- **Reorder** — **Drag-and-drop** to reorder rows. **Keyboard:** use **Move up** / **Move down** on each row (toolbar also notes that drag is mouse-oriented and buttons are for keyboard users).
+- **Reorder** — **Drag-and-drop** to reorder rows. **Keyboard:** use **Move up** / **Move down** on each row. Order is **saved in Supabase** (`position` per task). While **search** has text, reorder is disabled (clear search to drag or use move buttons).
 - **Sign-in** — **Google** OAuth via Supabase Auth. Tasks are private to your account.
 - **Persistence** — Tasks are saved in **Supabase Postgres** (per user) and loaded after sign-in.
 - **Theme** — **Light** / **dark** toggle; preference is stored under **`task-manager-theme`** and respects `prefers-color-scheme` until you choose a theme.
 - **Feedback** — **Toasts** for successes (add, update, delete) and errors (e.g. storage read/write failures).
 - **Accessibility** — **Skip to main content** link, form and control **`aria-label`s**, validation **`aria-invalid`** / **`aria-describedby`**, delete **dialog** pattern, toast **`role="alert"`** / **`aria-live`** where appropriate, and reorder controls exposed for keyboard and screen readers.
 
-> **Note:** List order from drag-and-drop or move buttons is still local UI state. After a reload, tasks are ordered by creation time from the database.
+> **Note:** If your database was created before manual order existed, run `supabase/migration_add_task_position.sql` once to add the `position` column and backfill.
 
 ## Tech stack
 
@@ -38,7 +38,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 1. Create a Supabase project.
 2. Run the SQL in `supabase/schema.sql` in the Supabase SQL editor.  
-   If you already had a `tasks` table without `user_id`, run `supabase/migration_add_user_rls.sql` instead (or after aligning your table).
+   If you already had a `tasks` table without `user_id`, run `supabase/migration_add_user_rls.sql` instead (or after aligning your table).  
+   If your `tasks` table has no `position` column yet, run `supabase/migration_add_task_position.sql` once.
 3. **Authentication → Providers → Google**: enable and add your Google OAuth client ID/secret (Google Cloud Console). Under **URL configuration**, add your site URL and redirect URLs (e.g. `http://localhost:3000/**`, `https://your-app.vercel.app/**`).
 4. Create `.env.local` in the project root:
 

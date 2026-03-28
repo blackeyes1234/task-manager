@@ -16,9 +16,11 @@ import {
   createTask,
   deleteTaskById,
   listTasks,
+  reorderTasks,
   updateTaskCompleted,
   updateTaskTitle,
 } from "@/lib/taskApi";
+import { mergeVisibleOrderIntoFull } from "@/lib/mergeTaskOrder";
 import TaskForm from "@/components/TaskForm";
 import TaskSearchField from "@/components/TaskSearchField";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -232,6 +234,45 @@ export default function TaskManagerApp() {
     [tasks, supabase, pushToast]
   );
 
+  const persistTaskOrder = useCallback(
+    async (newVisibleOrder: string[]) => {
+      if (debouncedSearch.trim()) return;
+
+      const fullIds = tasks.map((t) => t.id);
+      const visibleIds = searchFilteredTasks.map((t) => t.id);
+      const merged = mergeVisibleOrderIntoFull(
+        fullIds,
+        visibleIds,
+        newVisibleOrder
+      );
+
+      if (
+        merged.length !== fullIds.length ||
+        new Set(merged).size !== merged.length
+      ) {
+        return;
+      }
+
+      const byId = new Map(tasks.map((t) => [t.id, t]));
+      const reordered = merged
+        .map((id) => byId.get(id))
+        .filter((t): t is Task => t != null);
+
+      if (reordered.length !== merged.length) return;
+
+      const previous = tasks;
+      setTasks(reordered);
+
+      try {
+        await reorderTasks(supabase, merged);
+      } catch {
+        setTasks(previous);
+        pushToast("error", "Failed to save task order. Please try again.");
+      }
+    },
+    [tasks, searchFilteredTasks, debouncedSearch, supabase, pushToast]
+  );
+
   const filterOptions: TaskFilter[] = ["All", "Active", "Completed"];
 
   const onFilterClick = useCallback(
@@ -340,6 +381,7 @@ export default function TaskManagerApp() {
                   onUpdate={updateTask}
                   onDelete={deleteTask}
                   onToggleComplete={toggleTaskComplete}
+                  onPersistOrder={persistTaskOrder}
                 />
               )}
             </section>

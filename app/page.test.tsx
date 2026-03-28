@@ -5,6 +5,7 @@ import {
   createTask,
   deleteTaskById,
   listTasks,
+  reorderTasks,
   updateTaskCompleted,
   updateTaskTitle,
 } from "@/lib/taskApi";
@@ -20,6 +21,7 @@ jest.mock("@/lib/taskApi", () => ({
   updateTaskTitle: jest.fn(),
   updateTaskCompleted: jest.fn(),
   deleteTaskById: jest.fn(),
+  reorderTasks: jest.fn(),
 }));
 
 const mockedListTasks = listTasks as jest.MockedFunction<typeof listTasks>;
@@ -32,6 +34,9 @@ const mockedUpdateTaskCompleted = updateTaskCompleted as jest.MockedFunction<
 >;
 const mockedDeleteTaskById = deleteTaskById as jest.MockedFunction<
   typeof deleteTaskById
+>;
+const mockedReorderTasks = reorderTasks as jest.MockedFunction<
+  typeof reorderTasks
 >;
 
 const mockedCreateBrowserSupabaseClient =
@@ -102,6 +107,7 @@ describe("Home task manager", () => {
       })
     );
     mockedDeleteTaskById.mockResolvedValue();
+    mockedReorderTasks.mockResolvedValue();
   });
 
   it("adds a task using Supabase API", async () => {
@@ -379,6 +385,15 @@ describe("Home task manager", () => {
       expect(allowed).toContainEqual(ordered);
       expect(ordered).not.toEqual(["A", "B", "C"]);
     });
+
+    await waitFor(() => {
+      expect(mockedReorderTasks).toHaveBeenCalled();
+    });
+    const lastIds = mockedReorderTasks.mock.calls.at(-1)?.[1] as string[];
+    expect([
+      ["id-b", "id-a", "id-c"],
+      ["id-b", "id-c", "id-a"],
+    ]).toContainEqual(lastIds);
   });
 
   it("allows entering a task with 100 characters (max length)", async () => {

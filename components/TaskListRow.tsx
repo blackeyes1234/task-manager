@@ -23,6 +23,8 @@ export type TaskListRowProps = {
   isEntering: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
+  /** When true, drag and move buttons are disabled (e.g. while search is active). */
+  reorderLocked?: boolean;
   onToggleComplete: (id: string) => void;
   onEditTitleChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onEditInputKeyDown: (
@@ -54,6 +56,7 @@ function TaskListRow({
   isEntering,
   canMoveUp,
   canMoveDown,
+  reorderLocked = false,
   onToggleComplete,
   onEditTitleChange,
   onEditInputKeyDown,
@@ -111,21 +114,21 @@ function TaskListRow({
   );
 
   const dragStart = useCallback(() => {
-    if (!isEditing) onDragStartRow(id);
-  }, [isEditing, onDragStartRow, id]);
+    if (!isEditing && !reorderLocked) onDragStartRow(id);
+  }, [isEditing, reorderLocked, onDragStartRow, id]);
 
   const dragOver = useCallback(
     (e: React.DragEvent<HTMLLIElement>) => {
-      if (!isEditing) onDragOverRow(e, id);
+      if (!isEditing && !reorderLocked) onDragOverRow(e, id);
     },
-    [isEditing, onDragOverRow, id]
+    [isEditing, reorderLocked, onDragOverRow, id]
   );
 
   const drop = useCallback(
     (e: React.DragEvent<HTMLLIElement>) => {
-      if (!isEditing) onDropRow(e, id);
+      if (!isEditing && !reorderLocked) onDropRow(e, id);
     },
-    [isEditing, onDropRow, id]
+    [isEditing, reorderLocked, onDropRow, id]
   );
 
   return (
@@ -139,14 +142,15 @@ function TaskListRow({
       ]
         .filter(Boolean)
         .join(" ")}
-      draggable={!isEditing && !isLeaving}
+      draggable={!reorderLocked && !isEditing && !isLeaving}
       onDragStart={dragStart}
       onDragOver={dragOver}
       onDrop={drop}
       onDragEnd={onDragEnd}
       tabIndex={-1}
       style={{
-        cursor: isEditing ? "default" : "grab",
+        cursor:
+          isEditing || reorderLocked ? "default" : "grab",
         userSelect: "none",
       }}
     >
@@ -218,8 +222,12 @@ function TaskListRow({
             )}
             {!isEditing && (
               <span
-                title="Drag to reorder with the mouse. Use the Move up / Move down buttons for keyboard reordering."
-                className="shrink-0 cursor-grab select-none pl-2 text-xl text-zinc-400 dark:text-zinc-600"
+                title={
+                  reorderLocked
+                    ? "Clear search to reorder tasks."
+                    : "Drag to reorder with the mouse. Use the Move up / Move down buttons for keyboard reordering."
+                }
+                className={`shrink-0 select-none pl-2 text-xl text-zinc-400 dark:text-zinc-600 ${reorderLocked ? "cursor-default opacity-40" : "cursor-grab"}`}
                 style={{ userSelect: "none" }}
                 aria-hidden
               >
@@ -240,7 +248,7 @@ function TaskListRow({
             <button
               type="button"
               onClick={moveUp}
-              disabled={!canMoveUp}
+              disabled={!canMoveUp || reorderLocked}
               aria-label={`Move "${displayTitle}" up in the list`}
               className="flex h-7 w-8 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
             >
@@ -249,7 +257,7 @@ function TaskListRow({
             <button
               type="button"
               onClick={moveDown}
-              disabled={!canMoveDown}
+              disabled={!canMoveDown || reorderLocked}
               aria-label={`Move "${displayTitle}" down in the list`}
               className="flex h-7 w-8 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:focus-visible:ring-zinc-500 dark:focus-visible:ring-offset-zinc-900"
             >

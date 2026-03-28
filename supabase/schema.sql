@@ -8,11 +8,13 @@ create table if not exists public.tasks (
   completed boolean not null default false,
   priority text not null check (priority in ('High', 'Medium', 'Low')),
   due_date date,
+  position integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
+create index if not exists tasks_user_position_idx on public.tasks (user_id, position);
 create index if not exists tasks_user_created_at_idx on public.tasks (user_id, created_at);
 
 create or replace function public.set_updated_at()

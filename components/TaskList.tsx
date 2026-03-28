@@ -22,6 +22,8 @@ interface TaskListProps {
   onUpdate: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onToggleComplete: (id: string) => void;
+  /** Called after drag or keyboard reorder with the new visible task id order (not called while search is active). */
+  onPersistOrder?: (orderedIds: string[]) => void;
 }
 
 function TaskList({
@@ -32,7 +34,9 @@ function TaskList({
   onUpdate,
   onDelete,
   onToggleComplete,
+  onPersistOrder,
 }: TaskListProps) {
+  const reorderLocked = highlightQuery.trim().length > 0;
   const [taskOrder, setTaskOrder] = useState<string[]>(() =>
     initialTasks.map((t) => t.id)
   );
@@ -261,14 +265,27 @@ function TaskList({
         setDragOverPosition(null);
         return;
       }
-      setTaskOrder((prev) =>
-        reorderTaskIdsAfterDrop(prev, draggedId, droppedId, dragOverPosition)
-      );
+      if (reorderLocked) {
+        setDraggedId(null);
+        setDragOverId(null);
+        setDragOverPosition(null);
+        return;
+      }
+      setTaskOrder((prev) => {
+        const next = reorderTaskIdsAfterDrop(
+          prev,
+          draggedId,
+          droppedId,
+          dragOverPosition
+        );
+        queueMicrotask(() => onPersistOrder?.(next));
+        return next;
+      });
       setDraggedId(null);
       setDragOverId(null);
       setDragOverPosition(null);
     },
-    [draggedId, dragOverPosition]
+    [draggedId, dragOverPosition, reorderLocked, onPersistOrder]
   );
 
   const onDragEnd = useCallback(() => {
@@ -342,6 +359,7 @@ function TaskList({
               isEntering={isEntering}
               canMoveUp={canMoveUp}
               canMoveDown={canMoveDown}
+              reorderLocked={reorderLocked}
               onToggleComplete={onToggleComplete}
               onEditTitleChange={handleEditChange}
               onEditInputKeyDown={handleEditInputKeyDown}
