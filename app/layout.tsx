@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Task Manager",
   description:
-    "Add, edit, reorder, and remove tasks. Your list is saved in the browser.",
+    "Add, edit, reorder, and remove tasks. Sign in with Google; your list is saved in Supabase.",
 };
 
 export default function RootLayout({

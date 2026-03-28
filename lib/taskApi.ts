@@ -1,4 +1,4 @@
-import { assertSupabaseConfigured } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Task } from "@/lib/types";
 import { parseDueDate, parseTaskPriority } from "@/lib/types";
 
@@ -20,8 +20,18 @@ function mapRowToTask(row: TaskRow): Task {
   };
 }
 
-export async function listTasks(): Promise<Task[]> {
-  const client = assertSupabaseConfigured();
+async function requireUserId(client: SupabaseClient) {
+  const {
+    data: { user },
+    error,
+  } = await client.auth.getUser();
+  if (error || !user) {
+    throw error ?? new Error("Not authenticated");
+  }
+  return user.id;
+}
+
+export async function listTasks(client: SupabaseClient): Promise<Task[]> {
   const { data, error } = await client
     .from("tasks")
     .select("id,title,completed,priority,due_date")
@@ -31,12 +41,15 @@ export async function listTasks(): Promise<Task[]> {
   return (data ?? []).map((row) => mapRowToTask(row as TaskRow));
 }
 
-export async function createTask(input: {
-  title: string;
-  priority: Task["priority"];
-  dueDate: string | null;
-}): Promise<Task> {
-  const client = assertSupabaseConfigured();
+export async function createTask(
+  client: SupabaseClient,
+  input: {
+    title: string;
+    priority: Task["priority"];
+    dueDate: string | null;
+  }
+): Promise<Task> {
+  const userId = await requireUserId(client);
   const { data, error } = await client
     .from("tasks")
     .insert({
@@ -44,6 +57,7 @@ export async function createTask(input: {
       priority: input.priority,
       due_date: input.dueDate,
       completed: false,
+      user_id: userId,
     })
     .select("id,title,completed,priority,due_date")
     .single();
@@ -52,8 +66,11 @@ export async function createTask(input: {
   return mapRowToTask(data as TaskRow);
 }
 
-export async function updateTaskTitle(id: string, title: string): Promise<Task> {
-  const client = assertSupabaseConfigured();
+export async function updateTaskTitle(
+  client: SupabaseClient,
+  id: string,
+  title: string
+): Promise<Task> {
   const { data, error } = await client
     .from("tasks")
     .update({ title })
@@ -66,10 +83,10 @@ export async function updateTaskTitle(id: string, title: string): Promise<Task> 
 }
 
 export async function updateTaskCompleted(
+  client: SupabaseClient,
   id: string,
   completed: boolean
 ): Promise<Task> {
-  const client = assertSupabaseConfigured();
   const { data, error } = await client
     .from("tasks")
     .update({ completed })
@@ -81,8 +98,10 @@ export async function updateTaskCompleted(
   return mapRowToTask(data as TaskRow);
 }
 
-export async function deleteTaskById(id: string): Promise<void> {
-  const client = assertSupabaseConfigured();
+export async function deleteTaskById(
+  client: SupabaseClient,
+  id: string
+): Promise<void> {
   const { error } = await client.from("tasks").delete().eq("id", id);
   if (error) throw error;
 }

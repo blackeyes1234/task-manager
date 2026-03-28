@@ -8,7 +8,8 @@ A task manager built with Next.js (App Router) and Supabase. Tasks are stored in
 - **Filters** — Show **All**, **Active**, or **Completed** tasks.
 - **Search** — Debounced search across title, priority, and due date; matching text is **highlighted** in the list.
 - **Reorder** — **Drag-and-drop** to reorder rows. **Keyboard:** use **Move up** / **Move down** on each row (toolbar also notes that drag is mouse-oriented and buttons are for keyboard users).
-- **Persistence** — Tasks are saved in **Supabase Postgres** and loaded when the app starts.
+- **Sign-in** — **Google** OAuth via Supabase Auth. Tasks are private to your account.
+- **Persistence** — Tasks are saved in **Supabase Postgres** (per user) and loaded after sign-in.
 - **Theme** — **Light** / **dark** toggle; preference is stored under **`task-manager-theme`** and respects `prefers-color-scheme` until you choose a theme.
 - **Feedback** — **Toasts** for successes (add, update, delete) and errors (e.g. storage read/write failures).
 - **Accessibility** — **Skip to main content** link, form and control **`aria-label`s**, validation **`aria-invalid`** / **`aria-describedby`**, delete **dialog** pattern, toast **`role="alert"`** / **`aria-live`** where appropriate, and reorder controls exposed for keyboard and screen readers.
@@ -19,7 +20,7 @@ A task manager built with Next.js (App Router) and Supabase. Tasks are stored in
 
 - [Next.js](https://nextjs.org/) 16 (App Router), React 19, TypeScript
 - [Tailwind CSS](https://tailwindcss.com/) v4
-- [Supabase](https://supabase.com/) (`@supabase/supabase-js`)
+- [Supabase](https://supabase.com/) (`@supabase/supabase-js`, `@supabase/ssr`)
 - Tests: Jest, Testing Library (`@testing-library/react`, `user-event`)
 
 ## Getting started
@@ -36,15 +37,17 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Supabase setup
 
 1. Create a Supabase project.
-2. Run the SQL in `supabase/schema.sql` in the Supabase SQL editor.
-3. Create `.env.local` in the project root:
+2. Run the SQL in `supabase/schema.sql` in the Supabase SQL editor.  
+   If you already had a `tasks` table without `user_id`, run `supabase/migration_add_user_rls.sql` instead (or after aligning your table).
+3. **Authentication → Providers → Google**: enable and add your Google OAuth client ID/secret (Google Cloud Console). Under **URL configuration**, add your site URL and redirect URLs (e.g. `http://localhost:3000/**`, `https://your-app.vercel.app/**`).
+4. Create `.env.local` in the project root:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-4. Restart the dev server after changing environment variables.
+5. Restart the dev server after changing environment variables.
 
 ## Scripts
 
@@ -62,7 +65,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 - `app/` — App Router entry (`page.tsx`), global styles, `error.tsx` / `global-error.tsx` for unexpected errors
 - `components/` — UI: task form, list, rows, search, theme toggle, toasts, dialogs
 - `hooks/` — `useToasts`
-- `lib/` — Types, Supabase client/API, search/highlight utilities, theme init script
+- `lib/` — Types, Supabase browser/server clients, task API, search/highlight utilities, theme init script
+- `middleware.ts` — Refreshes Supabase auth session cookies
+- `app/auth/callback` — OAuth redirect handler for Google sign-in
 - `supabase/` — SQL schema used by the app
 
 ## Environment & deployment

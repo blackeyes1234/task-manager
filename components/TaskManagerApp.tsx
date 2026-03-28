@@ -8,8 +8,10 @@ import {
   useEffect,
   useRef,
 } from "react";
+import type { User } from "@supabase/supabase-js";
 import type { Task, TaskPriority } from "@/lib/types";
 import { taskMatchesSearchQuery } from "@/lib/taskSearch";
+import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import {
   createTask,
   deleteTaskById,
@@ -23,6 +25,8 @@ import ThemeToggle from "@/components/ThemeToggle";
 import Toaster from "@/components/Toaster";
 import { useToasts } from "@/hooks/useToasts";
 import dynamic from "next/dynamic";
+import GoogleSignInPanel from "@/components/GoogleSignInPanel";
+import AuthAccountMenu from "@/components/AuthAccountMenu";
 
 export type TaskFilter = "All" | "Active" | "Completed";
 
@@ -39,8 +43,13 @@ export default function TaskManagerApp() {
   const { toasts, pushToast, dismissToast } = useToasts();
   const pushToastRef = useRef(pushToast);
 
+  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+
+  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("All");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
@@ -52,9 +61,39 @@ export default function TaskManagerApp() {
   useEffect(() => {
     let cancelled = false;
 
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!cancelled) {
+        setUser(session?.user ?? null);
+        setAuthReady(true);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!authReady || !user) {
+      setTasks([]);
+      setIsLoadingTasks(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingTasks(true);
+
     async function loadTasks() {
       try {
-        const loaded = await listTasks();
+        const loaded = await listTasks(supabase);
         if (!cancelled) setTasks(loaded);
       } catch {
         if (!cancelled) {
@@ -73,7 +112,7 @@ export default function TaskManagerApp() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authReady, user, supabase]);
 
   const onDebouncedSearchChange = useCallback((query: string) => {
     startTransition(() => setDebouncedSearch(query));
@@ -105,7 +144,7 @@ export default function TaskManagerApp() {
   const addTask = useCallback(
     async (title: string, priority: TaskPriority, dueDate: string | null) => {
       try {
-        const created = await createTask({
+        const created = await createTask(supabase, {
           title: title.trim(),
           priority,
           dueDate: dueDate ?? null,
@@ -118,7 +157,7 @@ export default function TaskManagerApp() {
         pushToast("error", "Failed to add task. Please try again.");
       }
     },
-    [pushToast]
+    [supabase, pushToast]
   );
 
   const updateTask = useCallback(
@@ -134,7 +173,7 @@ export default function TaskManagerApp() {
       );
 
       try {
-        const updated = await updateTaskTitle(id, trimmed);
+        const updated = await updateTaskTitle(supabase, id, trimmed);
         setTasks((prev) =>
           prev.map((task) => (task.id === id ? updated : task))
         );
@@ -146,7 +185,7 @@ export default function TaskManagerApp() {
         pushToast("error", "Failed to update task. Please try again.");
       }
     },
-    [tasks, pushToast]
+    [tasks, supabase, pushToast]
   );
 
   const toggleTaskComplete = useCallback(
@@ -163,7 +202,7 @@ export default function TaskManagerApp() {
       );
 
       try {
-        const updated = await updateTaskCompleted(id, nextCompleted);
+        const updated = await updateTaskCompleted(supabase, id, nextCompleted);
         setTasks((prev) =>
           prev.map((task) => (task.id === id ? updated : task))
         );
@@ -174,7 +213,7 @@ export default function TaskManagerApp() {
         pushToast("error", "Failed to update task. Please try again.");
       }
     },
-    [tasks, pushToast]
+    [tasks, supabase, pushToast]
   );
 
   const deleteTask = useCallback(
@@ -183,14 +222,14 @@ export default function TaskManagerApp() {
       setTasks((prev) => prev.filter((task) => task.id !== id));
 
       try {
-        await deleteTaskById(id);
+        await deleteTaskById(supabase, id);
         pushToast("success", "Task has been deleted.");
       } catch {
         setTasks(previous);
         pushToast("error", "Failed to delete task. Please try again.");
       }
     },
-    [tasks, pushToast]
+    [tasks, supabase, pushToast]
   );
 
   const filterOptions: TaskFilter[] = ["All", "Active", "Completed"];
@@ -202,6 +241,13 @@ export default function TaskManagerApp() {
     },
     []
   );
+
+  const onGoogleOAuthError = useCallback(() => {
+    pushToast(
+      "error",
+      "Could not start Google sign-in. Check Supabase Google provider settings."
+    );
+  }, [pushToast]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
@@ -228,59 +274,77 @@ export default function TaskManagerApp() {
               Add, edit, and remove tasks below.
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            {user ? (
+              <AuthAccountMenu supabase={supabase} user={user} />
+            ) : null}
+            <ThemeToggle />
+          </div>
         </header>
 
-        <TaskForm onSubmit={addTask} />
+        {!authReady ? (
+          <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
+            Checking sign-in…
+          </p>
+        ) : !user ? (
+          <GoogleSignInPanel
+            supabase={supabase}
+            onError={onGoogleOAuthError}
+          />
+        ) : (
+          <>
+            <TaskForm onSubmit={addTask} />
 
-        <section>
-          <h2 className="mb-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            Tasks
-          </h2>
-          <div
-            className="mb-4 flex w-full gap-2"
-            role="group"
-            aria-label="Filter tasks"
-          >
-            {filterOptions.map((label) => {
-              const isSelected = taskFilter === label;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  data-filter={label}
-                  aria-pressed={isSelected}
-                  onClick={onFilterClick}
-                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-zinc-950 ${
-                    isSelected
-                      ? "bg-zinc-900 text-white shadow-sm focus:ring-zinc-500 dark:bg-zinc-100 dark:text-zinc-900 dark:focus:ring-zinc-400"
-                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 focus:ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:focus:ring-zinc-600"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+            <section>
+              <h2 className="mb-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                Tasks
+              </h2>
+              <div
+                className="mb-4 flex w-full gap-2"
+                role="group"
+                aria-label="Filter tasks"
+              >
+                {filterOptions.map((label) => {
+                  const isSelected = taskFilter === label;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      data-filter={label}
+                      aria-pressed={isSelected}
+                      onClick={onFilterClick}
+                      className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-zinc-950 ${
+                        isSelected
+                          ? "bg-zinc-900 text-white shadow-sm focus:ring-zinc-500 dark:bg-zinc-100 dark:text-zinc-900 dark:focus:ring-zinc-400"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 focus:ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:focus:ring-zinc-600"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
 
-          <TaskSearchField onDebouncedChange={onDebouncedSearchChange} />
+              <TaskSearchField onDebouncedChange={onDebouncedSearchChange} />
 
-          {isLoadingTasks ? (
-            <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
-              Loading tasks from Supabase…
-            </p>
-          ) : (
-            <TaskList
-              tasks={searchFilteredTasks}
-              highlightQuery={debouncedSearch}
-              noResultsFromSearch={noResultsFromSearch}
-              recentlyAddedId={recentlyAddedId}
-              onUpdate={updateTask}
-              onDelete={deleteTask}
-              onToggleComplete={toggleTaskComplete}
-            />
-          )}
-        </section>
+              {isLoadingTasks ? (
+                <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
+                  Loading tasks from Supabase…
+                </p>
+              ) : (
+                <TaskList
+                  tasks={searchFilteredTasks}
+                  highlightQuery={debouncedSearch}
+                  noResultsFromSearch={noResultsFromSearch}
+                  recentlyAddedId={recentlyAddedId}
+                  onUpdate={updateTask}
+                  onDelete={deleteTask}
+                  onToggleComplete={toggleTaskComplete}
+                />
+              )}
+            </section>
+          </>
+        )}
       </main>
     </div>
   );

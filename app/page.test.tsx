@@ -8,6 +8,11 @@ import {
   updateTaskCompleted,
   updateTaskTitle,
 } from "@/lib/taskApi";
+import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+
+jest.mock("@/lib/supabase/browser", () => ({
+  createBrowserSupabaseClient: jest.fn(),
+}));
 
 jest.mock("@/lib/taskApi", () => ({
   listTasks: jest.fn(),
@@ -29,31 +34,73 @@ const mockedDeleteTaskById = deleteTaskById as jest.MockedFunction<
   typeof deleteTaskById
 >;
 
+const mockedCreateBrowserSupabaseClient =
+  createBrowserSupabaseClient as jest.MockedFunction<
+    typeof createBrowserSupabaseClient
+  >;
+
+function mockSignedInSupabase() {
+  const sessionUser = {
+    id: "test-user-id",
+    email: "test@example.com",
+    user_metadata: {},
+    app_metadata: {},
+    aud: "authenticated",
+    created_at: "",
+  };
+  mockedCreateBrowserSupabaseClient.mockReturnValue({
+    auth: {
+      getSession: jest.fn().mockResolvedValue({
+        data: {
+          session: {
+            user: sessionUser,
+            access_token: "at",
+            refresh_token: "rt",
+            expires_in: 3600,
+            token_type: "bearer",
+          },
+        },
+        error: null,
+      }),
+      onAuthStateChange: jest.fn(() => ({
+        data: { subscription: { unsubscribe: jest.fn() } },
+      })),
+      signInWithOAuth: jest.fn(),
+      signOut: jest.fn().mockResolvedValue({ error: null }),
+    },
+  } as ReturnType<typeof createBrowserSupabaseClient>);
+}
+
 describe("Home task manager", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSignedInSupabase();
     mockedListTasks.mockResolvedValue([]);
-    mockedCreateTask.mockImplementation(async ({ title, priority, dueDate }) => ({
-      id: `id-${title}`,
-      title,
-      completed: false,
-      priority,
-      dueDate,
-    }));
-    mockedUpdateTaskTitle.mockImplementation(async (id, title) => ({
+    mockedCreateTask.mockImplementation(
+      async (_client, { title, priority, dueDate }) => ({
+        id: `id-${title}`,
+        title,
+        completed: false,
+        priority,
+        dueDate,
+      })
+    );
+    mockedUpdateTaskTitle.mockImplementation(async (_client, id, title) => ({
       id,
       title,
       completed: false,
       priority: "Medium",
       dueDate: null,
     }));
-    mockedUpdateTaskCompleted.mockImplementation(async (id, completed) => ({
-      id,
-      title: "Updated",
-      completed,
-      priority: "Medium",
-      dueDate: null,
-    }));
+    mockedUpdateTaskCompleted.mockImplementation(
+      async (_client, id, completed) => ({
+        id,
+        title: "Updated",
+        completed,
+        priority: "Medium",
+        dueDate: null,
+      })
+    );
     mockedDeleteTaskById.mockResolvedValue();
   });
 
@@ -64,6 +111,7 @@ describe("Home task manager", () => {
     await waitFor(() => {
       expect(mockedListTasks).toHaveBeenCalledTimes(1);
     });
+    await screen.findByLabelText("Task title");
 
     await user.type(screen.getByLabelText("Task title"), "Buy milk");
     await user.click(screen.getByRole("button", { name: "Add task" }));
@@ -72,7 +120,7 @@ describe("Home task manager", () => {
     expect(
       await screen.findByText("Task successfully added!")
     ).toBeInTheDocument();
-    expect(mockedCreateTask).toHaveBeenCalledWith({
+    expect(mockedCreateTask).toHaveBeenCalledWith(expect.anything(), {
       title: "Buy milk",
       priority: "Medium",
       dueDate: expect.any(String),
@@ -106,6 +154,7 @@ describe("Home task manager", () => {
     const user = userEvent.setup();
 
     render(<Home />);
+    await screen.findByLabelText("Task title");
 
     await user.type(screen.getByLabelText("Task title"), "Read docs");
     await user.click(screen.getByRole("button", { name: "Add task" }));
@@ -119,7 +168,10 @@ describe("Home task manager", () => {
     expect(
       await screen.findByText("Task has been deleted.")
     ).toBeInTheDocument();
-    expect(mockedDeleteTaskById).toHaveBeenCalledWith("task-2");
+    expect(mockedDeleteTaskById).toHaveBeenCalledWith(
+      expect.anything(),
+      "task-2"
+    );
 
     await waitFor(() => {
       expect(screen.queryByText("Read docs")).not.toBeInTheDocument();
@@ -144,6 +196,7 @@ describe("Home task manager", () => {
     const user = userEvent.setup();
 
     render(<Home />);
+    await screen.findByLabelText("Task title");
 
     await user.type(screen.getByLabelText("Task title"), "Old title");
     await user.click(screen.getByRole("button", { name: "Add task" }));
@@ -170,6 +223,7 @@ describe("Home task manager", () => {
 
     render(<Home />);
     await screen.findByRole("heading", { name: "Task Manager" });
+    await screen.findByLabelText("Task title");
     await user.type(screen.getByLabelText("Task title"), "Will not persist");
     await user.click(screen.getByRole("button", { name: "Add task" }));
     expect(
@@ -195,6 +249,7 @@ describe("Home task manager", () => {
     const user = userEvent.setup();
 
     render(<Home />);
+    await screen.findByLabelText("Task title");
 
     await user.type(screen.getByLabelText("Task title"), "Alpha");
     await user.click(screen.getByRole("button", { name: "Add task" }));
@@ -222,6 +277,7 @@ describe("Home task manager", () => {
     const user = userEvent.setup();
 
     render(<Home />);
+    await screen.findByLabelText("Task title");
 
     await user.type(screen.getByLabelText("Task title"), "Keep title");
     await user.click(screen.getByRole("button", { name: "Add task" }));
@@ -268,6 +324,7 @@ describe("Home task manager", () => {
 
     const user = userEvent.setup();
     render(<Home />);
+    await screen.findByLabelText("Task title");
 
     await user.type(screen.getByLabelText("Task title"), "A");
     await user.click(screen.getByRole("button", { name: "Add task" }));
@@ -336,6 +393,7 @@ describe("Home task manager", () => {
     const user = userEvent.setup();
 
     render(<Home />);
+    await screen.findByLabelText("Task title");
 
     await user.type(screen.getByLabelText("Task title"), longTaskTitle);
     await user.click(screen.getByRole("button", { name: "Add task" }));
