@@ -294,17 +294,22 @@ function TaskList({
     setDragOverPosition(null);
   }, []);
 
-  const onReorder = useCallback((taskId: string, direction: "up" | "down") => {
-    setTaskOrder((prev) => {
-      const idx = prev.indexOf(taskId);
-      if (idx === -1) return prev;
-      const swap = direction === "up" ? idx - 1 : idx + 1;
-      if (swap < 0 || swap >= prev.length) return prev;
-      const next = [...prev];
-      [next[idx], next[swap]] = [next[swap], next[idx]];
-      return next;
-    });
-  }, []);
+  const onReorder = useCallback(
+    (taskId: string, direction: "up" | "down") => {
+      if (reorderLocked) return;
+      setTaskOrder((prev) => {
+        const idx = prev.indexOf(taskId);
+        if (idx === -1) return prev;
+        const swap = direction === "up" ? idx - 1 : idx + 1;
+        if (swap < 0 || swap >= prev.length) return prev;
+        const next = [...prev];
+        [next[idx], next[swap]] = [next[swap], next[idx]];
+        queueMicrotask(() => onPersistOrder?.(next));
+        return next;
+      });
+    },
+    [reorderLocked, onPersistOrder]
+  );
 
   if (initialTasks.length === 0) {
     return (
