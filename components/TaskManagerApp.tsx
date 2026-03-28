@@ -56,6 +56,10 @@ export default function TaskManagerApp() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
+  /** Monotonic id so the most recently started `listTasks` wins (avoids stale overwrites). */
+  const tasksListFetchIdRef = useRef(0);
+  const userId = user?.id ?? null;
+
   useEffect(() => {
     pushToastRef.current = pushToast;
   }, [pushToast]);
@@ -84,7 +88,7 @@ export default function TaskManagerApp() {
   }, [supabase]);
 
   useEffect(() => {
-    if (!authReady || !user) {
+    if (!authReady || !userId) {
       setTasks([]);
       setIsLoadingTasks(false);
       return;
@@ -94,11 +98,17 @@ export default function TaskManagerApp() {
     setIsLoadingTasks(true);
 
     async function loadTasks() {
+      const fetchId = ++tasksListFetchIdRef.current;
       try {
         const loaded = await listTasks(supabase);
-        if (!cancelled) setTasks(loaded);
+        if (
+          !cancelled &&
+          fetchId === tasksListFetchIdRef.current
+        ) {
+          setTasks(loaded);
+        }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && fetchId === tasksListFetchIdRef.current) {
           pushToastRef.current(
             "error",
             "Could not load tasks from Supabase. Check your connection and environment variables."
@@ -114,10 +124,10 @@ export default function TaskManagerApp() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, user, supabase]);
+  }, [authReady, userId, supabase]);
 
   useEffect(() => {
-    if (!authReady || !user) return;
+    if (!authReady || !userId) return;
 
     let cancelled = false;
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -126,9 +136,15 @@ export default function TaskManagerApp() {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = undefined;
+        const fetchId = ++tasksListFetchIdRef.current;
         void listTasks(supabase)
           .then((loaded) => {
-            if (!cancelled) setTasks(loaded);
+            if (
+              !cancelled &&
+              fetchId === tasksListFetchIdRef.current
+            ) {
+              setTasks(loaded);
+            }
           })
           .catch(() => {});
       }, 120);
@@ -136,8 +152,9 @@ export default function TaskManagerApp() {
 
     // No client-side filter: RLS limits postgres_changes to this user's rows; avoids missing
     // UPDATEs (e.g. position-only) when replica identity would not satisfy user_id filters.
+    // Depend on userId (not user) so TOKEN_REFRESHED does not tear down the channel and drop refreshes.
     const channel = supabase
-      .channel(`tasks-sync:${user.id}`)
+      .channel(`tasks-sync:${userId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "tasks" },
@@ -156,7 +173,7 @@ export default function TaskManagerApp() {
       document.removeEventListener("visibilitychange", onVisibility);
       void supabase.removeChannel(channel);
     };
-  }, [authReady, user, supabase]);
+  }, [authReady, userId, supabase]);
 
   const onDebouncedSearchChange = useCallback((query: string) => {
     startTransition(() => setDebouncedSearch(query));
