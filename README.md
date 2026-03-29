@@ -13,6 +13,7 @@ A task manager built with Next.js (App Router) and Supabase. Tasks are stored in
 - **Live updates** — While signed in, the list **refreshes from the server** when tasks change (Supabase **Realtime** on `tasks`, plus a refetch when you **return to the tab**). That includes **reorder** (drag or move up/down) on another device once the DB migration below is applied. Run `supabase/migration_enable_realtime_tasks.sql` once so Postgres publishes `tasks` to Realtime, and `supabase/migration_realtime_and_atomic_reorder.sql` once so **position updates** broadcast reliably and **reorder is atomic** (single RPC).
 - **Theme** — **Light** / **dark** toggle; preference is stored under **`task-manager-theme`** and respects `prefers-color-scheme` until you choose a theme.
 - **Feedback** — **Toasts** for successes (add, update, delete) and errors (e.g. storage read/write failures).
+- **Analytics (production)** — [Amplitude](https://amplitude.com/) tracks task **CRUD**-style events (list loaded, create, title update, completion toggle, delete, reorder) when `NODE_ENV` is `production` and `NEXT_PUBLIC_AMPLITUDE_API_KEY` is set. No analytics in local dev or tests unless you opt in.
 - **Accessibility** — **Skip to main content** link, form and control **`aria-label`s**, validation **`aria-invalid`** / **`aria-describedby`**, delete **dialog** pattern, toast **`role="alert"`** / **`aria-live`** where appropriate, and reorder controls exposed for keyboard and screen readers.
 
 > **Note:** If your database was created before manual order existed, run `supabase/migration_add_task_position.sql` once to add the `position` column and backfill.
@@ -22,6 +23,7 @@ A task manager built with Next.js (App Router) and Supabase. Tasks are stored in
 - [Next.js](https://nextjs.org/) 16 (App Router), React 19, TypeScript
 - [Tailwind CSS](https://tailwindcss.com/) v4
 - [Supabase](https://supabase.com/) (`@supabase/supabase-js`, `@supabase/ssr`)
+- [Amplitude](https://www.npmjs.com/package/@amplitude/analytics-browser) (browser SDK; production-only in app code)
 - Tests: Jest, Testing Library (`@testing-library/react`, `user-event`)
 
 ## Getting started
@@ -49,6 +51,8 @@ Open [http://localhost:3000](http://localhost:3000).
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+# Optional — task analytics (production builds only)
+# NEXT_PUBLIC_AMPLITUDE_API_KEY=your-amplitude-key
 ```
 
 5. Restart the dev server after changing environment variables.

@@ -24,6 +24,17 @@ jest.mock("@/lib/taskApi", () => ({
   reorderTasks: jest.fn(),
 }));
 
+jest.mock("@/lib/analytics", () => ({
+  setAmplitudeUserId: jest.fn(),
+  resetAmplitudeUser: jest.fn(),
+  trackTasksListed: jest.fn(),
+  trackTaskCreated: jest.fn(),
+  trackTaskTitleUpdated: jest.fn(),
+  trackTaskCompletionUpdated: jest.fn(),
+  trackTaskDeleted: jest.fn(),
+  trackTaskOrderUpdated: jest.fn(),
+}));
+
 const mockedListTasks = listTasks as jest.MockedFunction<typeof listTasks>;
 const mockedCreateTask = createTask as jest.MockedFunction<typeof createTask>;
 const mockedUpdateTaskTitle = updateTaskTitle as jest.MockedFunction<

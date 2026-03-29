@@ -10,6 +10,16 @@ import {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { Task, TaskPriority } from "@/lib/types";
+import {
+  resetAmplitudeUser,
+  setAmplitudeUserId,
+  trackTaskCompletionUpdated,
+  trackTaskCreated,
+  trackTaskDeleted,
+  trackTaskOrderUpdated,
+  trackTasksListed,
+  trackTaskTitleUpdated,
+} from "@/lib/analytics";
 import { taskMatchesSearchQuery } from "@/lib/taskSearch";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import {
@@ -58,7 +68,18 @@ export default function TaskManagerApp() {
 
   /** Monotonic id so the most recently started `listTasks` wins (avoids stale overwrites). */
   const tasksListFetchIdRef = useRef(0);
+  /** One "Tasks Listed" per signed-in user (initial load only, not Realtime refetch). */
+  const tasksListedTrackedForUserRef = useRef<string | null>(null);
   const userId = user?.id ?? null;
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (userId) {
+      setAmplitudeUserId(userId);
+    } else {
+      resetAmplitudeUser();
+    }
+  }, [authReady, userId]);
 
   useEffect(() => {
     pushToastRef.current = pushToast;
@@ -89,6 +110,7 @@ export default function TaskManagerApp() {
 
   useEffect(() => {
     if (!authReady || !userId) {
+      tasksListedTrackedForUserRef.current = null;
       setTasks([]);
       setIsLoadingTasks(false);
       return;
@@ -106,6 +128,10 @@ export default function TaskManagerApp() {
           fetchId === tasksListFetchIdRef.current
         ) {
           setTasks(loaded);
+          if (tasksListedTrackedForUserRef.current !== userId) {
+            tasksListedTrackedForUserRef.current = userId;
+            trackTasksListed(loaded.length);
+          }
         }
       } catch {
         if (!cancelled && fetchId === tasksListFetchIdRef.current) {
@@ -213,6 +239,10 @@ export default function TaskManagerApp() {
         setTasks((prev) => [...prev, created]);
         setRecentlyAddedId(created.id);
         setTimeout(() => setRecentlyAddedId(null), 450);
+        trackTaskCreated({
+          priority: created.priority,
+          has_due_date: created.dueDate != null,
+        });
         pushToast("success", "Task successfully added!");
       } catch {
         pushToast("error", "Failed to add task. Please try again.");
@@ -238,6 +268,7 @@ export default function TaskManagerApp() {
         setTasks((prev) =>
           prev.map((task) => (task.id === id ? updated : task))
         );
+        trackTaskTitleUpdated();
         pushToast("success", "Task updated successfully!");
       } catch {
         setTasks((prev) =>
@@ -267,6 +298,7 @@ export default function TaskManagerApp() {
         setTasks((prev) =>
           prev.map((task) => (task.id === id ? updated : task))
         );
+        trackTaskCompletionUpdated(updated.completed);
       } catch {
         setTasks((prev) =>
           prev.map((task) => (task.id === id ? previous : task))
@@ -284,6 +316,7 @@ export default function TaskManagerApp() {
 
       try {
         await deleteTaskById(supabase, id);
+        trackTaskDeleted();
         pushToast("success", "Task has been deleted.");
       } catch {
         setTasks(previous);
@@ -324,6 +357,7 @@ export default function TaskManagerApp() {
 
       try {
         await reorderTasks(supabase, merged);
+        trackTaskOrderUpdated(merged.length);
       } catch {
         setTasks(previous);
         pushToast("error", "Failed to save task order. Please try again.");
